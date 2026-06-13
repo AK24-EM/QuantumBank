@@ -1,4 +1,4 @@
-# QuantumBank Layer 1 — Infrastructure Foundation HCL
+# QuantumBank Layer 1 - Infrastructure Foundation HCL
 
 Production-grade active-active multi-region infrastructure IaC using Terraform on AWS.
 
