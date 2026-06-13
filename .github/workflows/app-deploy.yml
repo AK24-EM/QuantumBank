@@ -173,11 +173,20 @@ jobs:
 
       # Deploy server backend container update to ECS
       - name: Deploy Server to ECS Fargate (ap-south-1)
+        id: deploy-ecs
         run: |
-          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
+          if aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query "services[0].status" --output text 2>/dev/null | grep -q "ACTIVE"; then
+            echo "Service exists. Updating ECS service..."
+            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
+            echo "deployed=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::ECS Cluster/Service ${{ env.ECS_SERVICE }} not found in ${{ env.AWS_REGION }}. Skipping deployment."
+            echo "deployed=false" >> $GITHUB_OUTPUT
+          fi
 
       # Wait for ECS service to reach stable status (Health Check Verification)
       - name: Verify Service Stability Health Check
+        if: steps.deploy-ecs.outputs.deployed == 'true'
         run: |
           echo "Waiting for ECS service stability health check..."
           aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }}
