@@ -1,5 +1,5 @@
 ###############################################################################
-# QuantumBank — Bootstrap Module
+# QuantumBank - Bootstrap Module
 # Creates the S3 remote-state bucket and DynamoDB lock table.
 # Apply ONCE before all other environment modules.
 #
@@ -39,7 +39,7 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 ###############################################################################
-# S3 — Remote State Bucket
+# S3 - Remote State Bucket
 ###############################################################################
 
 resource "aws_s3_bucket" "tf_state" {
@@ -118,7 +118,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "tf_state" {
 }
 
 ###############################################################################
-# DynamoDB — State Locking Table
+# DynamoDB - State Locking Table
 ###############################################################################
 
 resource "aws_dynamodb_table" "tf_locks" {
@@ -145,7 +145,7 @@ resource "aws_dynamodb_table" "tf_locks" {
 }
 
 ###############################################################################
-# CloudWatch — S3 bucket access log bucket
+# CloudWatch - S3 bucket access log bucket
 ###############################################################################
 
 resource "aws_s3_bucket" "tf_state_access_logs" {

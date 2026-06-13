@@ -1,5 +1,5 @@
 ###############################################################################
-# Environment: us-east-1 — main.tf
+# Environment: us-east-1 - main.tf
 #
 # Primary AWS Region deployment root. Wires up VPC, Security Groups,
 # IAM Roles, Application Load Balancers, and ECS Cluster hosting the 6 services.
@@ -67,6 +67,6 @@ module "ecs_cluster" {
   private_subnet_ids      = module.vpc.private_subnet_ids
   ecs_sg_id               = module.security_groups.ecs_sg_id
   task_execution_role_arn = module.iam.ecs_task_execution_role_arn
-  task_role_arn            = module.iam.ecs_task_role_arn
+  task_role_arn           = module.iam.ecs_task_role_arn
   target_group_arn        = module.alb.target_group_arn
 }

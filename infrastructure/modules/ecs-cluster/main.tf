@@ -1,15 +1,15 @@
 ###############################################################################
-# ECS Cluster Module — main.tf
+# ECS Cluster Module - main.tf
 #
 # Provisions an ECS Fargate cluster per region with 6 microservices
 # matching the QuantumBank platform services in platformService.ts:
 #
-#   api-gateway          — port 8080, 3 desired tasks, ALB-attached
-#   payment-service      — port 8081, 3 desired tasks, ALB-attached
-#   auth-service         — port 8082, 2 desired tasks, ALB-attached
-#   notification-service — port 8083, 2 desired tasks, ALB-attached
-#   analytics-worker     — port 8084, 2 desired tasks, internal only
-#   statement-generator  — port 8085, 1 desired task,  internal only
+#   api-gateway          - port 8080, 3 desired tasks, ALB-attached
+#   payment-service      - port 8081, 3 desired tasks, ALB-attached
+#   auth-service         - port 8082, 2 desired tasks, ALB-attached
+#   notification-service - port 8083, 2 desired tasks, ALB-attached
+#   analytics-worker     - port 8084, 2 desired tasks, internal only
+#   statement-generator  - port 8085, 1 desired task,  internal only
 #
 # All services use:
 #   - Fargate launch type (serverless compute)
@@ -20,7 +20,7 @@
 ###############################################################################
 
 ###############################################################################
-# ECR Repositories — one per service
+# ECR Repositories - one per service
 ###############################################################################
 
 locals {
@@ -81,7 +81,7 @@ locals {
     }
   }
 
-  alb_services     = { for k, v in local.services : k => v if v.alb_exposed }
+  alb_services      = { for k, v in local.services : k => v if v.alb_exposed }
   internal_services = { for k, v in local.services : k => v if !v.alb_exposed }
 }
 
@@ -167,7 +167,7 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 }
 
 ###############################################################################
-# CloudWatch Log Groups — one per service
+# CloudWatch Log Groups - one per service
 ###############################################################################
 
 resource "aws_cloudwatch_log_group" "services" {
@@ -205,14 +205,14 @@ resource "aws_ecs_task_definition" "services" {
       portMappings = [{
         containerPort = each.value.port
         protocol      = "tcp"
-        name          = each.key  # for Service Connect
+        name          = each.key # for Service Connect
       }]
 
       environment = [
-        { name = "APP_ENV",     value = var.environment },
-        { name = "AWS_REGION",  value = var.region },
+        { name = "APP_ENV", value = var.environment },
+        { name = "AWS_REGION", value = var.region },
         { name = "SERVICE_NAME", value = each.key },
-        { name = "PORT",        value = tostring(each.value.port) }
+        { name = "PORT", value = tostring(each.value.port) }
       ]
 
       secrets = [
@@ -273,7 +273,7 @@ resource "aws_ecs_task_definition" "services" {
 }
 
 ###############################################################################
-# ECS Services — ALB-attached (api-gateway, payment, auth, notification)
+# ECS Services - ALB-attached (api-gateway, payment, auth, notification)
 ###############################################################################
 
 resource "aws_ecs_service" "alb_services" {
@@ -334,7 +334,7 @@ resource "aws_ecs_service" "alb_services" {
 }
 
 ###############################################################################
-# ECS Services — Internal (analytics-worker, statement-generator)
+# ECS Services - Internal (analytics-worker, statement-generator)
 ###############################################################################
 
 resource "aws_ecs_service" "internal_services" {
@@ -383,7 +383,7 @@ resource "aws_ecs_service" "internal_services" {
 }
 
 ###############################################################################
-# Auto Scaling — per service
+# Auto Scaling - per service
 ###############################################################################
 
 resource "aws_appautoscaling_target" "services" {
@@ -440,12 +440,12 @@ resource "aws_appautoscaling_policy" "memory" {
 }
 
 ###############################################################################
-# Service Discovery — AWS Cloud Map (internal DNS)
+# Service Discovery - AWS Cloud Map (internal DNS)
 ###############################################################################
 
 resource "aws_service_discovery_private_dns_namespace" "main" {
   name        = "quantumbank.${var.region}.internal"
-  description = "QuantumBank internal service mesh — ${var.region}"
+  description = "QuantumBank internal service mesh - ${var.region}"
   vpc         = var.vpc_id
 
   tags = {

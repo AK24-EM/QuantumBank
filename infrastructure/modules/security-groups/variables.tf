@@ -1,5 +1,5 @@
 ###############################################################################
-# Security Groups Module — Variables
+# Security Groups Module - Variables
 ###############################################################################
 
 variable "vpc_id" {
@@ -8,7 +8,7 @@ variable "vpc_id" {
 }
 
 variable "region" {
-  description = "AWS region name — used for resource naming and VPC endpoints"
+  description = "AWS region name - used for resource naming and VPC endpoints"
   type        = string
 }
 

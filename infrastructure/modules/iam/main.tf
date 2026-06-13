@@ -1,11 +1,11 @@
 ###############################################################################
-# IAM Module — main.tf
+# IAM Module - main.tf
 #
 # Creates least-privilege IAM roles for the QuantumBank platform:
-#   1. ECSTaskExecutionRole  — lets ECS pull images from ECR, fetch secrets
-#   2. ECSTaskRole           — per-task permissions (SQS, S3, CloudWatch, X-Ray)
-#   3. TerraformDeployRole   — assumed by CI/CD pipeline (OIDC)
-#   4. ChaosEngineeringRole  — admin-only role for chaos experiments
+#   1. ECSTaskExecutionRole  - lets ECS pull images from ECR, fetch secrets
+#   2. ECSTaskRole           - per-task permissions (SQS, S3, CloudWatch, X-Ray)
+#   3. TerraformDeployRole   - assumed by CI/CD pipeline (OIDC)
+#   4. ChaosEngineeringRole  - admin-only role for chaos experiments
 ###############################################################################
 
 data "aws_caller_identity" "current" {}
@@ -13,7 +13,7 @@ data "aws_partition" "current" {}
 
 ###############################################################################
 # ECS Task Execution Role
-# Allows the ECS agent to pull images and fetch secrets — NOT the app itself
+# Allows the ECS agent to pull images and fetch secrets - NOT the app itself
 ###############################################################################
 
 resource "aws_iam_role" "ecs_task_execution" {
@@ -129,7 +129,7 @@ resource "aws_iam_role_policy" "ecs_task_permissions" {
         ]
         Resource = "*"
       },
-      # SQS — for async payment processing queues
+      # SQS - for async payment processing queues
       {
         Effect = "Allow"
         Action = [
@@ -141,7 +141,7 @@ resource "aws_iam_role_policy" "ecs_task_permissions" {
         ]
         Resource = "arn:${data.aws_partition.current.partition}:sqs:${var.region}:${data.aws_caller_identity.current.account_id}:quantumbank-*"
       },
-      # S3 — statement storage, analytics artifacts
+      # S3 - statement storage, analytics artifacts
       {
         Effect = "Allow"
         Action = [
@@ -157,10 +157,10 @@ resource "aws_iam_role_policy" "ecs_task_permissions" {
         Action   = ["s3:ListBucket"]
         Resource = "arn:${data.aws_partition.current.partition}:s3:::quantumbank-*"
       },
-      # CloudWatch metrics — application metrics publishing
+      # CloudWatch metrics - application metrics publishing
       {
-        Effect = "Allow"
-        Action = ["cloudwatch:PutMetricData"]
+        Effect   = "Allow"
+        Action   = ["cloudwatch:PutMetricData"]
         Resource = "*"
         Condition = {
           StringEquals = { "cloudwatch:namespace" = "QuantumBank" }
@@ -171,12 +171,12 @@ resource "aws_iam_role_policy" "ecs_task_permissions" {
 }
 
 ###############################################################################
-# Permission Boundary — Prevents privilege escalation from ECS roles
+# Permission Boundary - Prevents privilege escalation from ECS roles
 ###############################################################################
 
 resource "aws_iam_policy" "ecs_boundary" {
   name        = "quantumbank-ecs-boundary-${var.region}"
-  description = "Permission boundary for all QuantumBank ECS roles — blocks IAM privilege escalation"
+  description = "Permission boundary for all QuantumBank ECS roles - blocks IAM privilege escalation"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -201,7 +201,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_boundary" {
 }
 
 ###############################################################################
-# Terraform Deploy Role — assumed by GitHub Actions OIDC
+# Terraform Deploy Role - assumed by GitHub Actions OIDC
 ###############################################################################
 
 resource "aws_iam_role" "terraform_deploy" {
@@ -277,10 +277,10 @@ resource "aws_iam_role_policy" "terraform_deploy_permissions" {
         ]
         Resource = "*"
       },
-      # PassRole — only to ECS task roles
+      # PassRole - only to ECS task roles
       {
-        Effect   = "Allow"
-        Action   = ["iam:PassRole"]
+        Effect = "Allow"
+        Action = ["iam:PassRole"]
         Resource = [
           aws_iam_role.ecs_task_execution.arn,
           aws_iam_role.ecs_task.arn
@@ -291,7 +291,7 @@ resource "aws_iam_role_policy" "terraform_deploy_permissions" {
 }
 
 ###############################################################################
-# Chaos Engineering Role — admin-assumed for controlled experiments
+# Chaos Engineering Role - admin-assumed for controlled experiments
 ###############################################################################
 
 resource "aws_iam_role" "chaos_engineering" {
@@ -353,7 +353,7 @@ resource "aws_iam_role_policy" "chaos_engineering_permissions" {
           StringEquals = { "ssm:resourceTag/Project" = "quantumbank" }
         }
       },
-      # FIS — AWS Fault Injection Simulator experiments
+      # FIS - AWS Fault Injection Simulator experiments
       {
         Effect   = "Allow"
         Action   = ["fis:StartExperiment", "fis:GetExperiment", "fis:ListExperiments"]

@@ -1,5 +1,5 @@
 ###############################################################################
-# ALB Module — main.tf
+# ALB Module - main.tf
 #
 # Regional Application Load Balancer with:
 #   - HTTPS listener (443) with ACM certificate
@@ -11,7 +11,7 @@
 ###############################################################################
 
 ###############################################################################
-# S3 Bucket — ALB Access Logs
+# S3 Bucket - ALB Access Logs
 ###############################################################################
 
 data "aws_elb_service_account" "main" {}
@@ -99,7 +99,7 @@ resource "aws_lb" "main" {
   # Drop invalid HTTP headers for security
   drop_invalid_header_fields = true
 
-  # Deletion protection — never accidentally destroy the ALB
+  # Deletion protection - never accidentally destroy the ALB
   enable_deletion_protection = var.environment == "production"
 
   # WAF integration (Web ACL attached separately if needed)
@@ -120,7 +120,7 @@ resource "aws_lb" "main" {
 }
 
 ###############################################################################
-# Target Group — IP type for ECS Fargate (awsvpc network mode)
+# Target Group - IP type for ECS Fargate (awsvpc network mode)
 ###############################################################################
 
 resource "aws_lb_target_group" "main" {
@@ -130,7 +130,7 @@ resource "aws_lb_target_group" "main" {
   vpc_id      = var.vpc_id
   target_type = "ip"
 
-  # Graceful deregistration — let in-flight requests complete
+  # Graceful deregistration - let in-flight requests complete
   deregistration_delay = 30
 
   health_check {
@@ -165,7 +165,7 @@ resource "aws_lb_target_group" "main" {
 # Listeners
 ###############################################################################
 
-# HTTP (80) — Redirect to HTTPS
+# HTTP (80) - Redirect to HTTPS
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
@@ -181,7 +181,7 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# HTTPS (443) — Forward to target group
+# HTTPS (443) - Forward to target group
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
   port              = 443
@@ -195,7 +195,7 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# Listener rule — /health bypass for Route 53 health check (no auth required)
+# Listener rule - /health bypass for Route 53 health check (no auth required)
 resource "aws_lb_listener_rule" "health" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 1

@@ -1,5 +1,5 @@
 ###############################################################################
-# ALB Module — Variables
+# ALB Module - Variables
 ###############################################################################
 
 variable "vpc_id" {
@@ -28,7 +28,7 @@ variable "certificate_arn" {
 }
 
 variable "region" {
-  description = "AWS region name — used for resource naming"
+  description = "AWS region name - used for resource naming"
   type        = string
 }
 

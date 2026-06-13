@@ -1,5 +1,5 @@
 ###############################################################################
-# Route 53 Module — main.tf
+# Route 53 Module - main.tf
 #
 # Global DNS routing & failover. Created ONCE (typically in us-east-1).
 # Sets up:
@@ -19,7 +19,7 @@ data "aws_route53_zone" "primary" {
 }
 
 ###############################################################################
-# Route 53 Health Checks — one per regional endpoint
+# Route 53 Health Checks - one per regional endpoint
 ###############################################################################
 
 resource "aws_route53_health_check" "regional" {

@@ -1,5 +1,5 @@
 ###############################################################################
-# Bootstrap — Outputs
+# Bootstrap - Outputs
 # Copy these values into each environment's backend.tf
 ###############################################################################
 
@@ -24,6 +24,6 @@ output "dynamodb_table_arn" {
 }
 
 output "aws_account_id" {
-  description = "AWS account ID — used in bucket name references"
+  description = "AWS account ID - used in bucket name references"
   value       = data.aws_caller_identity.current.account_id
 }

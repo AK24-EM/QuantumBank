@@ -1,5 +1,5 @@
 ###############################################################################
-# Global DNS — main.tf
+# Global DNS - main.tf
 #
 # Wires up the Route 53 latency records using remote states from regional deployments.
 ###############################################################################

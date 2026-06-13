@@ -1,5 +1,5 @@
 ###############################################################################
-# Environment: eu-west-1 — main.tf
+# Environment: eu-west-1 - main.tf
 #
 # Secondary AWS Region deployment root.
 ###############################################################################
@@ -61,6 +61,6 @@ module "ecs_cluster" {
   private_subnet_ids      = module.vpc.private_subnet_ids
   ecs_sg_id               = module.security_groups.ecs_sg_id
   task_execution_role_arn = module.iam.ecs_task_execution_role_arn
-  task_role_arn            = module.iam.ecs_task_role_arn
+  task_role_arn           = module.iam.ecs_task_role_arn
   target_group_arn        = module.alb.target_group_arn
 }

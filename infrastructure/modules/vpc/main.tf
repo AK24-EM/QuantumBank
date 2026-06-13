@@ -1,8 +1,8 @@
 ###############################################################################
-# VPC Module — main.tf
+# VPC Module - main.tf
 # Provisions a full, HA VPC in a single region with:
-#   - 3 public subnets  (1 per AZ) — ALB, NAT Gateway, Bastion
-#   - 3 private subnets (1 per AZ) — ECS tasks, RDS, internal services
+#   - 3 public subnets  (1 per AZ) - ALB, NAT Gateway, Bastion
+#   - 3 private subnets (1 per AZ) - ECS tasks, RDS, internal services
 #   - Internet Gateway
 #   - 3 NAT Gateways (one per AZ for true HA egress)
 #   - Route tables for public + private subnets
@@ -65,8 +65,8 @@ resource "aws_subnet" "private" {
   availability_zone = var.availability_zones[count.index]
 
   tags = {
-    Name = "quantumbank-private-${var.region}-${var.availability_zones[count.index]}"
-    Tier = "private"
+    Name                              = "quantumbank-private-${var.region}-${var.availability_zones[count.index]}"
+    Tier                              = "private"
     "kubernetes.io/role/internal-elb" = "1"
   }
 }
@@ -87,7 +87,7 @@ resource "aws_eip" "nat" {
 }
 
 ###############################################################################
-# NAT Gateways — one per AZ for HA egress
+# NAT Gateways - one per AZ for HA egress
 ###############################################################################
 
 resource "aws_nat_gateway" "main" {
@@ -103,7 +103,7 @@ resource "aws_nat_gateway" "main" {
 }
 
 ###############################################################################
-# Route Tables — Public
+# Route Tables - Public
 ###############################################################################
 
 resource "aws_route_table" "public" {
@@ -126,7 +126,7 @@ resource "aws_route_table_association" "public" {
 }
 
 ###############################################################################
-# Route Tables — Private (one per AZ, routes to its AZ's NAT GW)
+# Route Tables - Private (one per AZ, routes to its AZ's NAT GW)
 ###############################################################################
 
 resource "aws_route_table" "private" {
@@ -211,7 +211,7 @@ resource "aws_flow_log" "main" {
 }
 
 ###############################################################################
-# Network ACL — Default: allow all (SGs are the primary control plane)
+# Network ACL - Default: allow all (SGs are the primary control plane)
 ###############################################################################
 
 resource "aws_default_network_acl" "main" {

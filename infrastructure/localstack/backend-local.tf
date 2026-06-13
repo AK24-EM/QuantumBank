@@ -1,5 +1,5 @@
 ###############################################################################
-# LOCAL BACKEND — uses LocalStack (free)
+# LOCAL BACKEND - uses LocalStack (free)
 # Switch between this and the real S3 backend for local vs prod deploys
 ###############################################################################
 

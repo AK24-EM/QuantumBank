@@ -1,5 +1,5 @@
 ###############################################################################
-# Security Groups Module — main.tf
+# Security Groups Module - main.tf
 #
 # Creates three tiered security groups:
 #   alb-sg   → public-facing ALB (443 + 80 from internet)
@@ -10,12 +10,12 @@
 ###############################################################################
 
 ###############################################################################
-# ALB Security Group — accepts HTTPS and HTTP from anywhere
+# ALB Security Group - accepts HTTPS and HTTP from anywhere
 ###############################################################################
 
 resource "aws_security_group" "alb" {
   name        = "quantumbank-alb-sg-${var.region}"
-  description = "QuantumBank ALB — accepts 443/80 from public internet"
+  description = "QuantumBank ALB - accepts 443/80 from public internet"
   vpc_id      = var.vpc_id
 
   # HTTPS inbound
@@ -27,7 +27,7 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTP inbound — ALB listener redirects to HTTPS, not ECS
+  # HTTP inbound - ALB listener redirects to HTTPS, not ECS
   ingress {
     description = "HTTP from internet (redirect to HTTPS)"
     from_port   = 80
@@ -56,12 +56,12 @@ resource "aws_security_group" "alb" {
 }
 
 ###############################################################################
-# ECS Security Group — traffic only from ALB SG
+# ECS Security Group - traffic only from ALB SG
 ###############################################################################
 
 resource "aws_security_group" "ecs" {
   name        = "quantumbank-ecs-sg-${var.region}"
-  description = "QuantumBank ECS tasks — accepts traffic from ALB SG only"
+  description = "QuantumBank ECS tasks - accepts traffic from ALB SG only"
   vpc_id      = var.vpc_id
 
   # Accept traffic from ALB on all service ports (8080–8085)
@@ -82,7 +82,7 @@ resource "aws_security_group" "ecs" {
     self        = true
   }
 
-  # HTTPS egress — for calling AWS APIs, Secrets Manager, ECR
+  # HTTPS egress - for calling AWS APIs, Secrets Manager, ECR
   egress {
     description = "HTTPS to AWS services and internet"
     from_port   = 443
@@ -119,12 +119,12 @@ resource "aws_security_group" "ecs" {
 }
 
 ###############################################################################
-# DB Security Group — accepts from ECS SG only
+# DB Security Group - accepts from ECS SG only
 ###############################################################################
 
 resource "aws_security_group" "db" {
   name        = "quantumbank-db-sg-${var.region}"
-  description = "QuantumBank databases — accepts from ECS SG only, no internet access"
+  description = "QuantumBank databases - accepts from ECS SG only, no internet access"
   vpc_id      = var.vpc_id
 
   # PostgreSQL (RDS)
@@ -154,7 +154,7 @@ resource "aws_security_group" "db" {
     security_groups = [aws_security_group.ecs.id]
   }
 
-  # No outbound from DB — databases should not initiate connections
+  # No outbound from DB - databases should not initiate connections
   egress {
     description = "Deny all outbound from DB tier"
     from_port   = 0
@@ -175,7 +175,7 @@ resource "aws_security_group" "db" {
 }
 
 ###############################################################################
-# VPC Endpoints — S3 and DynamoDB (Gateway type, free of charge)
+# VPC Endpoints - S3 and DynamoDB (Gateway type, free of charge)
 # Keeps S3/DynamoDB traffic inside the AWS network, avoids NAT GW costs
 ###############################################################################
 
