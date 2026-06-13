@@ -1,5 +1,6 @@
 name: "MERN Application CI/CD Pipeline"
 
+# Trigger CI/CD Pipeline verification
 on:
   push:
     branches:
