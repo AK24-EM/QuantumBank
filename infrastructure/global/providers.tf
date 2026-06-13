@@ -10,18 +10,15 @@ terraform {
       version = "~> 5.0"
     }
   }
+
   backend "s3" {
-    bucket         = "quantumbank-terraform-state"
-    key            = "global/dns/terraform.tfstate"
-    region         = "ap-south-1"
-    dynamodb_table = "quantumbank-terraform-locks"
-    encrypt        = true
+    key     = "global/dns/terraform.tfstate"
+    encrypt = true
   }
 }
 
 provider "aws" {
-  region  = "us-east-1" # DNS setup runs in us-east-1 (global)
-  profile = "quantumbank"
+  region = "us-east-1" # Route 53 hosted zones are global; API endpoint is us-east-1
 
   default_tags {
     tags = {

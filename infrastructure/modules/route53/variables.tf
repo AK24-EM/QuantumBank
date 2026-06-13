@@ -21,3 +21,15 @@ variable "health_check_failure_threshold" {
   type        = number
   default     = 2
 }
+
+variable "health_check_port" {
+  description = "Port for Route 53 health checks (80 for HTTP-only ALB, 443 for HTTPS)"
+  type        = number
+  default     = 80
+}
+
+variable "health_check_protocol" {
+  description = "Protocol for Route 53 health checks (HTTP or HTTPS)"
+  type        = string
+  default     = "HTTP"
+}

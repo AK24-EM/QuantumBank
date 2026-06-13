@@ -6,9 +6,11 @@
 #   - Push to main      → terraform apply (deploys to AWS automatically)
 #   - Manual dispatch   → choose environment + action
 #
-# AWS Auth via GitHub Secrets (Settings → Secrets → Actions):
-#   AWS_ACCESS_KEY_ID      — your AWS access key
-#   AWS_SECRET_ACCESS_KEY  — your AWS secret key
+# Prerequisites:
+#   1. Run infrastructure/bootstrap once to create S3 state bucket + DynamoDB lock table
+#   2. Set GitHub Secrets (Settings → Secrets → Actions):
+#        AWS_ACCESS_KEY_ID
+#        AWS_SECRET_ACCESS_KEY
 ###############################################################################
 
 name: "Terraform Infrastructure CI/CD"
@@ -47,13 +49,17 @@ on:
           - destroy
 
 env:
-  TF_VERSION: "1.5.7"
+  TF_VERSION: "1.8.5"
   AWS_REGION: "ap-south-1"
   TF_CLI_ARGS: "-no-color"
+  # Must match bootstrap output: quantumbank-tf-state-<account_id>
+  TF_STATE_BUCKET: "quantumbank-tf-state-577137986953"
+  TF_LOCK_TABLE: "quantumbank-tf-locks"
+  TF_STATE_REGION: "ap-south-1"
 
 jobs:
   ###########################################################################
-  # JOB 1: Validate & Format Check
+  # JOB 1: Validate & Format Check (no AWS credentials required)
   ###########################################################################
   validate:
     name: "Validate Terraform"
@@ -83,13 +89,6 @@ jobs:
               repo: context.repo.repo,
               body: '⚠️ **Terraform Format Check Failed**\n\nRun `terraform fmt -recursive infrastructure/` locally to fix.'
             })
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init (no backend)
         run: terraform -chdir=infrastructure/environments/ap-south-1 init -backend=false
@@ -124,16 +123,14 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Configure AWS Profile
-        run: |
-          aws configure set aws_access_key_id "${{ secrets.AWS_ACCESS_KEY_ID }}" --profile quantumbank
-          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}" --profile quantumbank
-          aws configure set region "${{ matrix.environment }}" --profile quantumbank
+          aws-region: ${{ matrix.environment }}
 
       - name: Terraform Init
-        run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} init
+        run: |
+          terraform -chdir=infrastructure/environments/${{ matrix.environment }} init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.TF_STATE_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
 
       - name: Terraform Plan
         id: plan
@@ -196,13 +193,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Configure AWS Profile
+      - name: Terraform Init
         run: |
-          aws configure set aws_access_key_id "${{ secrets.AWS_ACCESS_KEY_ID }}" --profile quantumbank
-          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}" --profile quantumbank
-          aws configure set region "ap-south-1" --profile quantumbank
+          terraform -chdir=infrastructure/environments/ap-south-1 init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.TF_STATE_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
 
-      - run: terraform -chdir=infrastructure/environments/ap-south-1 init
       - run: terraform -chdir=infrastructure/environments/ap-south-1 plan -out=ap-south-1.tfplan
       - run: terraform -chdir=infrastructure/environments/ap-south-1 apply -auto-approve ap-south-1.tfplan
 
@@ -245,13 +242,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ matrix.aws_region }}
 
-      - name: Configure AWS Profile
+      - name: Terraform Init
         run: |
-          aws configure set aws_access_key_id "${{ secrets.AWS_ACCESS_KEY_ID }}" --profile quantumbank
-          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}" --profile quantumbank
-          aws configure set region "${{ matrix.aws_region }}" --profile quantumbank
+          terraform -chdir=infrastructure/environments/${{ matrix.environment }} init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.TF_STATE_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
 
-      - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} init
       - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} plan -out=${{ matrix.environment }}.tfplan
       - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} apply -auto-approve ${{ matrix.environment }}.tfplan
 
@@ -281,7 +278,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - run: terraform -chdir=infrastructure/global init
+      - name: Terraform Init
+        run: |
+          terraform -chdir=infrastructure/global init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.TF_STATE_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
+
       - run: terraform -chdir=infrastructure/global plan -out=global.tfplan
       - run: terraform -chdir=infrastructure/global apply -auto-approve global.tfplan
 
@@ -303,7 +306,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
     environment:
-      name: production-destroy   # Set up manual approval in GitHub for this env!
+      name: production-destroy
 
     steps:
       - uses: actions/checkout@v4
@@ -318,5 +321,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - run: terraform -chdir=infrastructure/environments/${{ github.event.inputs.environment }} init
+      - name: Terraform Init
+        run: |
+          terraform -chdir=infrastructure/environments/${{ github.event.inputs.environment }} init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="region=${{ env.TF_STATE_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
+
       - run: terraform -chdir=infrastructure/environments/${{ github.event.inputs.environment }} destroy -auto-approve

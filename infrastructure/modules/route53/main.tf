@@ -26,8 +26,8 @@ resource "aws_route53_health_check" "regional" {
   for_each = var.regional_endpoints
 
   fqdn              = each.value.dns_name
-  port              = 443
-  type              = "HTTPS"
+  port              = var.health_check_port
+  type              = var.health_check_protocol
   resource_path     = "/health"
   failure_threshold = var.health_check_failure_threshold
   request_interval  = 30

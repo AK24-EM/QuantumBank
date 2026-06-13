@@ -12,18 +12,13 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "quantumbank-terraform-state"
-    key            = "environments/us-east-1/terraform.tfstate"
-    region         = "ap-south-1"
-    dynamodb_table = "quantumbank-terraform-locks"
-    encrypt        = true
-    profile        = "quantumbank"
+    key     = "environments/us-east-1/terraform.tfstate"
+    encrypt = true
   }
 }
 
 provider "aws" {
-  region  = "us-east-1"
-  profile = "quantumbank"
+  region = "us-east-1"
 
   default_tags {
     tags = {

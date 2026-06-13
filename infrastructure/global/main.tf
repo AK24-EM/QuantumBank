@@ -10,8 +10,8 @@ data "terraform_remote_state" "us_east_1" {
   config = {
     bucket         = var.state_bucket_name
     key            = "environments/us-east-1/terraform.tfstate"
-    region         = "ap-south-1"
-    dynamodb_table = "quantumbank-terraform-locks"
+    region         = var.state_bucket_region
+    dynamodb_table = var.dynamodb_table_name
   }
 }
 
@@ -20,8 +20,8 @@ data "terraform_remote_state" "eu_west_1" {
   config = {
     bucket         = var.state_bucket_name
     key            = "environments/eu-west-1/terraform.tfstate"
-    region         = "ap-south-1"
-    dynamodb_table = "quantumbank-terraform-locks"
+    region         = var.state_bucket_region
+    dynamodb_table = var.dynamodb_table_name
   }
 }
 
@@ -30,8 +30,8 @@ data "terraform_remote_state" "ap_south_1" {
   config = {
     bucket         = var.state_bucket_name
     key            = "environments/ap-south-1/terraform.tfstate"
-    region         = "ap-south-1"
-    dynamodb_table = "quantumbank-terraform-locks"
+    region         = var.state_bucket_region
+    dynamodb_table = var.dynamodb_table_name
   }
 }
 

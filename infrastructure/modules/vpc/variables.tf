@@ -63,3 +63,9 @@ variable "enable_flow_logs" {
   type        = bool
   default     = true
 }
+
+variable "single_nat_gateway" {
+  description = "Use one NAT gateway shared across all AZs (uses 1 EIP instead of 3)"
+  type        = bool
+  default     = true
+}

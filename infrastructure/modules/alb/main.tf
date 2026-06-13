@@ -165,8 +165,27 @@ resource "aws_lb_target_group" "main" {
 # Listeners
 ###############################################################################
 
-# HTTP (80) - Redirect to HTTPS
-resource "aws_lb_listener" "http" {
+locals {
+  enable_https = var.certificate_arn != ""
+}
+
+# HTTP (80) - forward directly when no ACM cert; otherwise redirect to HTTPS
+resource "aws_lb_listener" "http_forward" {
+  count = local.enable_https ? 0 : 1
+
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.main.arn
+  }
+}
+
+resource "aws_lb_listener" "http_redirect" {
+  count = local.enable_https ? 1 : 0
+
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
@@ -181,8 +200,10 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# HTTPS (443) - Forward to target group
+# HTTPS (443) - Forward to target group (requires valid ACM certificate)
 resource "aws_lb_listener" "https" {
+  count = local.enable_https ? 1 : 0
+
   load_balancer_arn = aws_lb.main.arn
   port              = 443
   protocol          = "HTTPS"
@@ -195,9 +216,29 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# Listener rule - /health bypass for Route 53 health check (no auth required)
-resource "aws_lb_listener_rule" "health" {
-  listener_arn = aws_lb_listener.https.arn
+# Listener rule - /health for Route 53 health checks (no auth required)
+resource "aws_lb_listener_rule" "health_https" {
+  count = local.enable_https ? 1 : 0
+
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 1
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.main.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/health"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "health_http" {
+  count = local.enable_https ? 0 : 1
+
+  listener_arn = aws_lb_listener.http_forward[0].arn
   priority     = 1
 
   action {

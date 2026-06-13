@@ -28,8 +28,8 @@ output "target_group_arn" {
 }
 
 output "https_listener_arn" {
-  description = "ARN of the HTTPS listener - used to add additional listener rules"
-  value       = aws_lb_listener.https.arn
+  description = "ARN of the HTTPS listener - null when running HTTP-only"
+  value       = length(aws_lb_listener.https) > 0 ? aws_lb_listener.https[0].arn : null
 }
 
 output "alb_logs_bucket" {

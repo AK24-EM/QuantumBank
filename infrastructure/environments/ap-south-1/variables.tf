@@ -33,8 +33,9 @@ variable "dynamodb_table_arn" {
 }
 
 variable "certificate_arn" {
-  description = "ACM Certificate ARN for wildcard domain"
+  description = "ACM Certificate ARN for wildcard domain. Leave empty for HTTP-only ALB."
   type        = string
+  default     = ""
 }
 
 variable "github_org" {
@@ -51,4 +52,10 @@ variable "sns_alert_arn" {
   description = "SNS Alert ARN for CloudWatch logs/alarms"
   type        = string
   default     = ""
+}
+
+variable "single_nat_gateway" {
+  description = "Use one shared NAT gateway (1 EIP) instead of one per AZ"
+  type        = bool
+  default     = true
 }

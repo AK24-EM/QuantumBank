@@ -21,6 +21,7 @@ module "vpc" {
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
   enable_flow_logs     = true
+  single_nat_gateway   = var.single_nat_gateway
 }
 
 # 2. Security Groups Module

@@ -23,8 +23,9 @@ variable "alb_sg_id" {
 }
 
 variable "certificate_arn" {
-  description = "ACM certificate ARN for HTTPS listener (wildcard *.quantumbank.com)"
+  description = "ACM certificate ARN for HTTPS listener. Leave empty for HTTP-only (port 80) during initial deploy."
   type        = string
+  default     = ""
 }
 
 variable "region" {
