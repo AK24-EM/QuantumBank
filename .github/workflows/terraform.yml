@@ -1,0 +1,304 @@
+###############################################################################
+# QuantumBank — Terraform CI/CD Pipeline
+#
+# Triggers:
+#   - PR opened/updated → terraform plan (shows what will change, posts comment)
+#   - Push to main      → terraform apply (deploys to AWS automatically)
+#   - Manual dispatch   → choose environment + action
+#
+# AWS Auth via GitHub Secrets (Settings → Secrets → Actions):
+#   AWS_ACCESS_KEY_ID      — your AWS access key
+#   AWS_SECRET_ACCESS_KEY  — your AWS secret key
+###############################################################################
+
+name: "Terraform Infrastructure CI/CD"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "infrastructure/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "infrastructure/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "ap-south-1"
+        type: choice
+        options:
+          - ap-south-1
+          - us-east-1
+          - eu-west-1
+          - all
+      action:
+        description: "Terraform action"
+        required: true
+        default: "plan"
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+env:
+  TF_VERSION: "1.5.7"
+  AWS_REGION: "ap-south-1"
+  TF_CLI_ARGS: "-no-color"
+
+jobs:
+  ###########################################################################
+  # JOB 1: Validate & Format Check
+  ###########################################################################
+  validate:
+    name: "Validate Terraform"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive infrastructure/
+        continue-on-error: true
+
+      - name: Comment format issues on PR
+        if: steps.fmt.outcome == 'failure' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ **Terraform Format Check Failed**\n\nRun `terraform fmt -recursive infrastructure/` locally to fix.'
+            })
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init (no backend)
+        run: terraform -chdir=infrastructure/environments/ap-south-1 init -backend=false
+
+      - name: Terraform Validate
+        run: terraform -chdir=infrastructure/environments/ap-south-1 validate
+
+  ###########################################################################
+  # JOB 2: Plan on Pull Requests (all 3 regions in parallel)
+  ###########################################################################
+  plan:
+    name: "Plan — ${{ matrix.environment }}"
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
+    strategy:
+      matrix:
+        environment: [ap-south-1, us-east-1, eu-west-1]
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} init
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform -chdir=infrastructure/environments/${{ matrix.environment }} \
+            plan -out=${{ matrix.environment }}.tfplan \
+            -detailed-exitcode 2>&1 | tee /tmp/plan-output.txt
+          echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.environment }}
+          path: infrastructure/environments/${{ matrix.environment }}/${{ matrix.environment }}.tfplan
+          retention-days: 7
+
+      - name: Comment Plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('/tmp/plan-output.txt', 'utf8');
+            const truncated = plan.length > 60000 ? plan.slice(0, 60000) + '\n\n...(truncated)' : plan;
+            const exitCode = '${{ steps.plan.outputs.exitcode }}';
+            const status = exitCode === '0' ? '✅ No changes'
+                         : exitCode === '2' ? '⚠️ Changes pending'
+                         : '❌ Plan failed';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🏗️ Terraform Plan — \`${{ matrix.environment }}\`\n**Status:** ${status}\n<details><summary>Full Plan</summary>\n\n\`\`\`hcl\n${truncated}\n\`\`\`\n</details>`
+            })
+
+  ###########################################################################
+  # JOB 3: Apply primary region (ap-south-1) on push to main
+  ###########################################################################
+  apply-ap-south-1:
+    name: "Apply — ap-south-1 (Primary)"
+    runs-on: ubuntu-latest
+    needs: validate
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' && (github.event.inputs.environment == 'ap-south-1' || github.event.inputs.environment == 'all'))
+    environment:
+      name: production-ap-south-1
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - run: terraform -chdir=infrastructure/environments/ap-south-1 init
+      - run: terraform -chdir=infrastructure/environments/ap-south-1 plan -out=ap-south-1.tfplan
+      - run: terraform -chdir=infrastructure/environments/ap-south-1 apply -auto-approve ap-south-1.tfplan
+
+      - name: Output summary
+        run: |
+          echo "## ✅ ap-south-1 Deployed" >> $GITHUB_STEP_SUMMARY
+          terraform -chdir=infrastructure/environments/ap-south-1 output 2>/dev/null >> $GITHUB_STEP_SUMMARY || true
+
+  ###########################################################################
+  # JOB 4: Apply secondary regions (after primary is healthy)
+  ###########################################################################
+  apply-secondary:
+    name: "Apply — ${{ matrix.environment }}"
+    runs-on: ubuntu-latest
+    needs: apply-ap-south-1
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' && github.event.inputs.environment == 'all')
+    strategy:
+      matrix:
+        include:
+          - environment: us-east-1
+            aws_region: us-east-1
+          - environment: eu-west-1
+            aws_region: eu-west-1
+      fail-fast: false
+    environment:
+      name: production-${{ matrix.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ matrix.aws_region }}
+
+      - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} init
+      - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} plan -out=${{ matrix.environment }}.tfplan
+      - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} apply -auto-approve ${{ matrix.environment }}.tfplan
+
+  ###########################################################################
+  # JOB 5: Apply Global DNS (after all regions deployed)
+  ###########################################################################
+  apply-global-dns:
+    name: "Apply — Global DNS (Route53)"
+    runs-on: ubuntu-latest
+    needs: apply-secondary
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' && github.event.inputs.environment == 'all')
+    environment:
+      name: production-global
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - run: terraform -chdir=infrastructure/global init
+      - run: terraform -chdir=infrastructure/global plan -out=global.tfplan
+      - run: terraform -chdir=infrastructure/global apply -auto-approve global.tfplan
+
+      - name: Full deployment summary
+        run: |
+          echo "## 🌍 Multi-Region Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "| Region | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🇮🇳 ap-south-1 (Primary) | ✅ Live |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🇺🇸 us-east-1            | ✅ Live |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🇪🇺 eu-west-1            | ✅ Live |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🌐 Global DNS            | ✅ Configured |" >> $GITHUB_STEP_SUMMARY
+
+  ###########################################################################
+  # JOB 6: Destroy — manual only, requires environment approval
+  ###########################################################################
+  destroy:
+    name: "Destroy — ${{ github.event.inputs.environment }}"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    environment:
+      name: production-destroy   # Set up manual approval in GitHub for this env!
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - run: terraform -chdir=infrastructure/environments/${{ github.event.inputs.environment }} init
+      - run: terraform -chdir=infrastructure/environments/${{ github.event.inputs.environment }} destroy -auto-approve

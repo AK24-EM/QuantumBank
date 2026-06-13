@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  localstack:
+    image: localstack/localstack:3.8.0   # Last free community edition (no license required)
+    container_name: quantumbank-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,dynamodb,ec2,iam,logs,cloudwatch,secretsmanager,sqs,sns,sts
+      - DEBUG=0
+      - DATA_DIR=/var/lib/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=ap-south-1
+      - PERSISTENCE=1
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+volumes:
+  localstack-data:
+    driver: local
