@@ -126,6 +126,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Configure AWS Profile
+        run: |
+          aws configure set aws_access_key_id "${{ secrets.AWS_ACCESS_KEY_ID }}" --profile quantumbank
+          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}" --profile quantumbank
+          aws configure set region "${{ matrix.environment }}" --profile quantumbank
+
       - name: Terraform Init
         run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} init
 
@@ -190,6 +196,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
+      - name: Configure AWS Profile
+        run: |
+          aws configure set aws_access_key_id "${{ secrets.AWS_ACCESS_KEY_ID }}" --profile quantumbank
+          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}" --profile quantumbank
+          aws configure set region "ap-south-1" --profile quantumbank
+
       - run: terraform -chdir=infrastructure/environments/ap-south-1 init
       - run: terraform -chdir=infrastructure/environments/ap-south-1 plan -out=ap-south-1.tfplan
       - run: terraform -chdir=infrastructure/environments/ap-south-1 apply -auto-approve ap-south-1.tfplan
@@ -232,6 +244,12 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ matrix.aws_region }}
+
+      - name: Configure AWS Profile
+        run: |
+          aws configure set aws_access_key_id "${{ secrets.AWS_ACCESS_KEY_ID }}" --profile quantumbank
+          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}" --profile quantumbank
+          aws configure set region "${{ matrix.aws_region }}" --profile quantumbank
 
       - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} init
       - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} plan -out=${{ matrix.environment }}.tfplan
