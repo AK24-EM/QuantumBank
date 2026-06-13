@@ -1,0 +1,193 @@
+name: "MERN Application CI/CD Pipeline"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "server/**"
+      - "package.json"
+      - "Dockerfile*"
+      - ".github/workflows/app-deploy.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "server/**"
+      - "package.json"
+      - "Dockerfile*"
+
+env:
+  AWS_REGION: "ap-south-1"
+  ECS_CLUSTER: "quantumbank-ap-south-1"
+  ECS_SERVICE: "quantumbank-api-gateway-ap-south-1"
+  ECR_REGISTRY: "577137986953.dkr.ecr.ap-south-1.amazonaws.com"
+  CLIENT_REPO: "quantumbank/client"
+  SERVER_REPO: "quantumbank/api-gateway"
+
+jobs:
+  ###########################################################################
+  # STAGE 1: Build & Verification Tests
+  ###########################################################################
+  verify-and-test:
+    name: "Verify & Run Lint/Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-dir: '.'
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Frontend Linter and Typecheck
+        run: |
+          npm run lint || echo "Lint warnings found"
+          npm run typecheck
+
+      - name: Install Backend Dependencies
+        run: |
+          cd server
+          npm ci
+
+      - name: Run Backend Tests
+        run: |
+          cd server
+          npm test
+
+  ###########################################################################
+  # STAGE 2: SonarQube Code Quality Check
+  ###########################################################################
+  sonarqube:
+    name: "SonarQube Code Quality check"
+    runs-on: ubuntu-latest
+    needs: verify-and-test
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        continue-on-error: true # Non-blocking for this sandbox
+
+  ###########################################################################
+  # STAGE 3: Build & Security Scanning (Trivy)
+  ###########################################################################
+  build-and-security:
+    name: "Docker Build & Trivy Scan"
+    runs-on: ubuntu-latest
+    needs: verify-and-test
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build client image locally (not pushed yet)
+      - name: Build Client Docker Image
+        run: |
+          docker build -t ${{ env.CLIENT_REPO }}:${{ github.sha }} -f Dockerfile .
+
+      # Build server image locally
+      - name: Build Server Docker Image
+        run: |
+          docker build -t ${{ env.SERVER_REPO }}:${{ github.sha }} -f server/Dockerfile ./server
+
+      # Trivy Security Scan on Client Image
+      - name: Trivy Client Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.CLIENT_REPO }}:${{ github.sha }}"
+          format: "table"
+          exit-code: "0" # Non-blocking for warnings in base image
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
+      # Trivy Security Scan on Server Image
+      - name: Trivy Server Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.SERVER_REPO }}:${{ github.sha }}"
+          format: "table"
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
+  ###########################################################################
+  # STAGE 4: Publish to AWS ECR and Deploy to ECS Fargate
+  ###########################################################################
+  deploy:
+    name: "Publish to ECR & Deploy to ECS"
+    runs-on: ubuntu-latest
+    needs: [build-and-security, sonarqube]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Client image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $ECR_REGISTRY/${{ env.CLIENT_REPO }}:${{ github.sha }} -t $ECR_REGISTRY/${{ env.CLIENT_REPO }}:latest -f Dockerfile .
+          docker push $ECR_REGISTRY/${{ env.CLIENT_REPO }}:${{ github.sha }}
+          docker push $ECR_REGISTRY/${{ env.CLIENT_REPO }}:latest
+
+      - name: Build, tag, and push Server image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $ECR_REGISTRY/${{ env.SERVER_REPO }}:${{ github.sha }} -t $ECR_REGISTRY/${{ env.SERVER_REPO }}:latest -f server/Dockerfile ./server
+          docker push $ECR_REGISTRY/${{ env.SERVER_REPO }}:${{ github.sha }}
+          docker push $ECR_REGISTRY/${{ env.SERVER_REPO }}:latest
+
+      # Deploy server backend container update to ECS
+      - name: Deploy Server to ECS Fargate (ap-south-1)
+        run: |
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
+
+      # Wait for ECS service to reach stable status (Health Check Verification)
+      - name: Verify Service Stability Health Check
+        run: |
+          echo "Waiting for ECS service stability health check..."
+          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }}
+          echo "Service is healthy and stable!"
+
+      # Notify status to Slack/Email
+      - name: Post Deployment Notification
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "::notice::QuantumBank MERN Application Deployment Succeeded!"
+            # Optional: curl -X POST -H 'Content-type: application/json' --data '{"text":"QuantumBank deployment succeeded!"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+          else
+            echo "::error::QuantumBank MERN Application Deployment Failed!"
+            # Optional: curl -X POST -H 'Content-type: application/json' --data '{"text":"QuantumBank deployment failed!"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+          fi
