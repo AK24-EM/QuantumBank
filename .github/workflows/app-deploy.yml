@@ -8,6 +8,8 @@ on:
       - "src/**"
       - "server/**"
       - "package.json"
+      - "package-lock.json"
+      - "server/package-lock.json"
       - "Dockerfile*"
       - ".github/workflows/app-deploy.yml"
   pull_request:
@@ -17,6 +19,8 @@ on:
       - "src/**"
       - "server/**"
       - "package.json"
+      - "package-lock.json"
+      - "server/package-lock.json"
       - "Dockerfile*"
 
 env:
