@@ -11,13 +11,13 @@ variable "domain_name" {
 variable "state_bucket_name" {
   description = "Bootstrap S3 bucket name for state lookups"
   type        = string
-  default     = "quantumbank-tf-state-577137986953"
+  default     = "quantumbank-terraform-state"
 }
 
 variable "dynamodb_table_name" {
   description = "Bootstrap DynamoDB lock table name"
   type        = string
-  default     = "quantumbank-tf-locks"
+  default     = "quantumbank-terraform-locks"
 }
 
 variable "state_bucket_region" {

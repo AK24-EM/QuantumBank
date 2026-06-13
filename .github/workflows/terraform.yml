@@ -52,9 +52,9 @@ env:
   TF_VERSION: "1.8.5"
   AWS_REGION: "ap-south-1"
   TF_CLI_ARGS: "-no-color"
-  # Must match bootstrap output: quantumbank-tf-state-<account_id>
-  TF_STATE_BUCKET: "quantumbank-tf-state-577137986953"
-  TF_LOCK_TABLE: "quantumbank-tf-locks"
+  # Remote state bucket (created manually or via bootstrap — must match AWS)
+  TF_STATE_BUCKET: "quantumbank-terraform-state"
+  TF_LOCK_TABLE: "quantumbank-terraform-locks"
   TF_STATE_REGION: "ap-south-1"
 
 jobs:

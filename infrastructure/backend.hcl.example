@@ -4,6 +4,6 @@
 #
 # Bucket name comes from bootstrap output: quantumbank-tf-state-<account_id>
 
-bucket         = "quantumbank-tf-state-577137986953"
+bucket         = "quantumbank-terraform-state"
 region         = "ap-south-1"
-dynamodb_table = "quantumbank-tf-locks"
+dynamodb_table = "quantumbank-terraform-locks"

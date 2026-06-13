@@ -8,8 +8,8 @@ availability_zones   = ["us-east-1a", "us-east-1b", "us-east-1c"]
 public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
 private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24", "10.0.12.0/24"]
 
-state_bucket_arn   = "arn:aws:s3:::quantumbank-tf-state-577137986953"
-dynamodb_table_arn = "arn:aws:dynamodb:ap-south-1:577137986953:table/quantumbank-tf-locks"
+state_bucket_arn   = "arn:aws:s3:::quantumbank-terraform-state"
+dynamodb_table_arn = "arn:aws:dynamodb:ap-south-1:577137986953:table/quantumbank-terraform-locks"
 
 certificate_arn = ""
 
