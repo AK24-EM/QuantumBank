@@ -57,6 +57,10 @@ env:
   TF_LOCK_TABLE: "quantumbank-terraform-locks"
   TF_STATE_REGION: "ap-south-1"
 
+concurrency:
+  group: terraform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   ###########################################################################
   # JOB 1: Validate & Format Check (no AWS credentials required)
@@ -192,6 +196,22 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
+
+      - name: Release orphaned Terraform state lock
+        continue-on-error: true
+        run: |
+          LOCK_ID="${{ env.TF_STATE_BUCKET }}/environments/ap-south-1/terraform.tfstate"
+          if aws dynamodb get-item \
+            --table-name "${{ env.TF_LOCK_TABLE }}" \
+            --region "${{ env.TF_STATE_REGION }}" \
+            --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
+            --query 'Item.LockID.S' --output text 2>/dev/null | grep -q .; then
+            echo "Clearing orphaned lock on ${LOCK_ID}"
+            aws dynamodb delete-item \
+              --table-name "${{ env.TF_LOCK_TABLE }}" \
+              --region "${{ env.TF_STATE_REGION }}" \
+              --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}"
+          fi
 
       - name: Terraform Init
         run: |
