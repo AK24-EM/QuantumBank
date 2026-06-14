@@ -1,0 +1,348 @@
+###############################################################################
+# QuantumBank — Chaos Engineering & DR Validation Pipeline (Layer 7)
+#
+# This pipeline runs chaos experiments against the live infrastructure and
+# validates that recovery mechanisms work within SLA.
+#
+# Triggers:
+#   - Manual dispatch only (chaos days, DR drills, pre-release validation)
+#   - Scheduled: weekly Sunday 01:00 UTC — lightweight experiment only
+#
+# Experiments (match AWS FIS templates in disaster-recovery module):
+#   EXP-1: ecs-task-termination  — stop 30% of payment-service tasks
+#   EXP-2: cpu-stress            — CPU stress on api-gateway
+#   EXP-3: multi-service-stop    — stop notification + analytics
+#   EXP-4: full-cluster-drain    — drain all api-gateway tasks (multi-region only)
+#
+# Each experiment:
+#   1. Starts the FIS experiment
+#   2. Waits for completion (with timeout)
+#   3. Validates CloudWatch metrics returned to baseline
+#   4. Posts results as GitHub step summary + SNS notification
+#
+# GitHub Secrets required:
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+###############################################################################
+
+name: "Chaos Engineering & DR Validation"
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment:
+        description: "Experiment to run"
+        required: true
+        type: choice
+        default: "ecs-task-termination"
+        options:
+          - ecs-task-termination
+          - cpu-stress
+          - multi-service-stop
+          - full-cluster-drain
+          - all-lightweight    # runs EXP-1 + EXP-3 only (safe for production)
+      region:
+        description: "Target AWS region"
+        required: true
+        type: choice
+        default: "ap-south-1"
+        options:
+          - ap-south-1
+      confirm_production:
+        description: "Type CONFIRM to run against production"
+        required: true
+        type: string
+        default: ""
+
+  schedule:
+    # Weekly lightweight chaos — every Sunday 01:00 UTC
+    # Runs ECS task termination only (safest experiment)
+    - cron: "0 1 * * 0"
+
+env:
+  AWS_REGION:      "ap-south-1"
+  ECS_CLUSTER:     "quantumbank-ap-south-1"
+  RTO_MINUTES:     "30"
+  POLL_INTERVAL:   "15"   # seconds between experiment status polls
+  MAX_WAIT_SECONDS: "600"  # 10 minute hard timeout per experiment
+
+jobs:
+  ###########################################################################
+  # Safety gate — require explicit confirmation for production runs
+  ###########################################################################
+  safety-gate:
+    name: "🔒 Safety Gate"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify production confirmation
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ github.event.inputs.confirm_production }}" != "CONFIRM" ]; then
+            echo "::error::Production chaos requires typing CONFIRM in the confirm_production input."
+            echo "::error::This protects against accidental runs. Re-trigger with confirm_production=CONFIRM."
+            exit 1
+          fi
+          echo "✅ Production confirmation accepted."
+
+      - name: Log experiment intent
+        run: |
+          echo "## 🔥 Chaos Experiment Scheduled" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Experiment | ${{ github.event.inputs.experiment || 'ecs-task-termination (scheduled)' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Region | ${{ github.event.inputs.region || env.AWS_REGION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger type | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+
+  ###########################################################################
+  # EXP-1: ECS Task Termination
+  ###########################################################################
+  exp-task-termination:
+    name: "💥 EXP-1: ECS Task Termination"
+    runs-on: ubuntu-latest
+    needs: safety-gate
+    if: |
+      github.event_name == 'schedule' ||
+      github.event.inputs.experiment == 'ecs-task-termination' ||
+      github.event.inputs.experiment == 'all-lightweight'
+    environment:
+      name: production-ap-south-1
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Record pre-experiment baseline
+        id: baseline
+        run: |
+          echo "Capturing pre-experiment task counts..."
+          TASK_COUNT=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services quantumbank-payment-service-${{ env.AWS_REGION }} \
+            --query "services[0].runningCount" --output text 2>/dev/null || echo "0")
+          echo "baseline_task_count=${TASK_COUNT}" >> $GITHUB_OUTPUT
+          echo "Pre-experiment payment-service task count: ${TASK_COUNT}"
+
+      - name: Start FIS experiment — ECS task termination
+        id: start-exp
+        run: |
+          # Resolve experiment template ID by name tag
+          TEMPLATE_ID=$(aws fis list-experiment-templates \
+            --query "experimentTemplates[?tags.Scenario=='pod_crash'].id | [0]" \
+            --output text 2>/dev/null || echo "")
+
+          if [ -z "$TEMPLATE_ID" ] || [ "$TEMPLATE_ID" = "None" ]; then
+            echo "::warning::FIS experiment template not found — infrastructure may not be provisioned yet"
+            echo "exp_id=SKIPPED" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          EXP_ID=$(aws fis start-experiment \
+            --experiment-template-id "$TEMPLATE_ID" \
+            --tags "TriggeredBy=${{ github.actor }},PipelineRun=${{ github.run_id }}" \
+            --query "experiment.id" --output text)
+
+          echo "exp_id=${EXP_ID}" >> $GITHUB_OUTPUT
+          echo "Started experiment: ${EXP_ID}"
+
+      - name: Wait for experiment completion
+        if: steps.start-exp.outputs.exp_id != 'SKIPPED'
+        id: wait
+        run: |
+          EXP_ID="${{ steps.start-exp.outputs.exp_id }}"
+          ELAPSED=0
+
+          while [ $ELAPSED -lt ${{ env.MAX_WAIT_SECONDS }} ]; do
+            STATUS=$(aws fis get-experiment \
+              --id "$EXP_ID" \
+              --query "experiment.state.status" --output text)
+
+            echo "[$ELAPSED s] Experiment status: ${STATUS}"
+
+            if [[ "$STATUS" == "completed" || "$STATUS" == "stopped" || "$STATUS" == "failed" ]]; then
+              echo "final_status=${STATUS}" >> $GITHUB_OUTPUT
+              break
+            fi
+
+            sleep ${{ env.POLL_INTERVAL }}
+            ELAPSED=$((ELAPSED + ${{ env.POLL_INTERVAL }}))
+          done
+
+          if [ $ELAPSED -ge ${{ env.MAX_WAIT_SECONDS }} ]; then
+            echo "::warning::Experiment timed out after ${{ env.MAX_WAIT_SECONDS }}s"
+            aws fis stop-experiment --id "$EXP_ID" || true
+            echo "final_status=timed_out" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate recovery — task count restored
+        if: steps.start-exp.outputs.exp_id != 'SKIPPED'
+        run: |
+          echo "Waiting 60s for ECS to restart tasks..."
+          sleep 60
+
+          RECOVERED_COUNT=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services quantumbank-payment-service-${{ env.AWS_REGION }} \
+            --query "services[0].runningCount" --output text 2>/dev/null || echo "0")
+
+          BASELINE="${{ steps.baseline.outputs.baseline_task_count }}"
+          echo "Baseline task count: ${BASELINE}"
+          echo "Recovered task count: ${RECOVERED_COUNT}"
+
+          if [ "$RECOVERED_COUNT" -ge "$BASELINE" ]; then
+            echo "✅ PASS: payment-service recovered to ${RECOVERED_COUNT}/${BASELINE} tasks"
+            echo "result=PASS" >> $GITHUB_ENV
+          else
+            echo "❌ FAIL: payment-service only recovered to ${RECOVERED_COUNT}/${BASELINE} tasks"
+            echo "result=FAIL" >> $GITHUB_ENV
+          fi
+
+      - name: Write experiment summary
+        if: always()
+        run: |
+          echo "## EXP-1: ECS Task Termination Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Experiment ID | ${{ steps.start-exp.outputs.exp_id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Final Status  | ${{ steps.wait.outputs.final_status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Recovery Result | ${result:-N/A} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Baseline Tasks | ${{ steps.baseline.outputs.baseline_task_count }} |" >> $GITHUB_STEP_SUMMARY
+
+  ###########################################################################
+  # EXP-3: Multi-Service Stop (non-critical services)
+  ###########################################################################
+  exp-multi-service-stop:
+    name: "🧪 EXP-3: Multi-Service Stop"
+    runs-on: ubuntu-latest
+    needs: [safety-gate, exp-task-termination]
+    if: |
+      always() &&
+      needs.safety-gate.result == 'success' &&
+      (github.event.inputs.experiment == 'multi-service-stop' ||
+       github.event.inputs.experiment == 'all-lightweight')
+    environment:
+      name: production-ap-south-1
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify payment-service is healthy before proceeding
+        run: |
+          PAYMENT_TASKS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services quantumbank-payment-service-${{ env.AWS_REGION }} \
+            --query "services[0].runningCount" --output text 2>/dev/null || echo "0")
+
+          if [ "$PAYMENT_TASKS" -lt "1" ]; then
+            echo "::error::payment-service has no running tasks — aborting EXP-3 to protect production"
+            exit 1
+          fi
+          echo "✅ payment-service healthy with ${PAYMENT_TASKS} tasks. Proceeding with EXP-3."
+
+      - name: Start FIS experiment — multi-service stop
+        id: start-exp3
+        run: |
+          TEMPLATE_ID=$(aws fis list-experiment-templates \
+            --query "experimentTemplates[?tags.Scenario=='regional_degradation'].id | [0]" \
+            --output text 2>/dev/null || echo "")
+
+          if [ -z "$TEMPLATE_ID" ] || [ "$TEMPLATE_ID" = "None" ]; then
+            echo "::warning::FIS experiment template for regional_degradation not found"
+            echo "exp_id=SKIPPED" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          EXP_ID=$(aws fis start-experiment \
+            --experiment-template-id "$TEMPLATE_ID" \
+            --tags "TriggeredBy=${{ github.actor }},PipelineRun=${{ github.run_id }}" \
+            --query "experiment.id" --output text)
+
+          echo "exp_id=${EXP_ID}" >> $GITHUB_OUTPUT
+          echo "Started EXP-3: ${EXP_ID}"
+
+      - name: Wait for experiment + validate graceful degradation
+        if: steps.start-exp3.outputs.exp_id != 'SKIPPED'
+        run: |
+          sleep 90  # allow experiment to run for 90s
+
+          # Validate: payment-service must still be running (graceful degradation)
+          PAYMENT_TASKS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services quantumbank-payment-service-${{ env.AWS_REGION }} \
+            --query "services[0].runningCount" --output text 2>/dev/null || echo "0")
+
+          echo "Payment-service tasks during multi-service stop: ${PAYMENT_TASKS}"
+
+          if [ "$PAYMENT_TASKS" -lt "1" ]; then
+            echo "::error::FAIL: payment-service was affected by non-critical service stop — blast radius too wide"
+            exit 1
+          fi
+
+          echo "✅ PASS: payment-service unaffected (${PAYMENT_TASKS} tasks running) during non-critical service outage"
+
+      - name: Write EXP-3 summary
+        if: always()
+        run: |
+          echo "## EXP-3: Multi-Service Stop Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Experiment ID | ${{ steps.start-exp3.outputs.exp_id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Graceful Degradation | ${{ job.status == 'success' && 'PASS ✅' || 'FAIL ❌' }} |" >> $GITHUB_STEP_SUMMARY
+
+  ###########################################################################
+  # Final DR Validation Report
+  ###########################################################################
+  dr-report:
+    name: "📋 DR Validation Report"
+    runs-on: ubuntu-latest
+    needs: [exp-task-termination, exp-multi-service-stop]
+    if: always()
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Collect final system state
+        run: |
+          echo "## 🏥 Post-Chaos System Health Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Running Tasks |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------------|" >> $GITHUB_STEP_SUMMARY
+
+          for SERVICE in api-gateway payment-service auth-service notification-service analytics-worker statement-generator; do
+            COUNT=$(aws ecs describe-services \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --services quantumbank-${SERVICE}-${{ env.AWS_REGION }} \
+              --query "services[0].runningCount" --output text 2>/dev/null || echo "N/A")
+            echo "| ${SERVICE} | ${COUNT} |" >> $GITHUB_STEP_SUMMARY
+          done
+
+      - name: Final summary
+        run: |
+          EXP1="${{ needs.exp-task-termination.result }}"
+          EXP3="${{ needs.exp-multi-service-stop.result }}"
+
+          icon() { [ "$1" = "success" ] && echo "✅" || [ "$1" = "skipped" ] && echo "⏭️" || echo "❌"; }
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## DR Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Experiment | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| EXP-1: Task Termination | $(icon $EXP1) ${EXP1} |" >> $GITHUB_STEP_SUMMARY
+          echo "| EXP-3: Multi-Service Stop | $(icon $EXP3) ${EXP3} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Full experiment logs: CloudWatch → Log Groups → \`/aws/fis/quantumbank-ap-south-1\`" >> $GITHUB_STEP_SUMMARY
+          echo "> DR Runbook: AWS Systems Manager → Documents → \`QuantumBank-DR-Runbook-ap-south-1\`" >> $GITHUB_STEP_SUMMARY

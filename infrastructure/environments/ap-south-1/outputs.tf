@@ -51,3 +51,20 @@ output "cloudtrail_name" {
   description = "CloudTrail audit trail name"
   value       = module.compliance.cloudtrail_name
 }
+
+# ── Disaster Recovery outputs ─────────────────────────────────────────────────
+
+output "dr_runbook_name" {
+  description = "SSM Automation DR runbook document name"
+  value       = module.disaster_recovery.dr_runbook_name
+}
+
+output "fis_experiment_ids" {
+  description = "AWS FIS experiment template IDs"
+  value       = module.disaster_recovery.experiment_ids
+}
+
+output "rto_alarm_name" {
+  description = "RTO breach CloudWatch alarm name"
+  value       = module.disaster_recovery.rto_alarm_name
+}

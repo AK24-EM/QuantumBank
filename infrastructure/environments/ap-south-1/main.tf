@@ -110,9 +110,29 @@ module "secrets" {
 module "compliance" {
   source = "../../modules/compliance"
 
-  region        = local.region
-  environment   = local.environment
-  kms_key_arn   = module.secrets.kms_key_arn
-  sns_topic_arn = module.observability.sns_topic_arn
+  region          = local.region
+  environment     = local.environment
+  kms_key_arn     = module.secrets.kms_key_arn
+  sns_topic_arn   = module.observability.sns_topic_arn
   log_group_names = module.ecs_cluster.log_group_names
+}
+
+###############################################################################
+# Disaster Recovery Module — FIS experiments, DR alarms, runbook, EventBridge
+###############################################################################
+
+module "disaster_recovery" {
+  source = "../../modules/disaster-recovery"
+
+  region           = local.region
+  environment      = local.environment
+  ecs_cluster_name = module.ecs_cluster.cluster_name
+  ecs_cluster_arn  = module.ecs_cluster.cluster_arn
+  service_names    = module.ecs_cluster.service_names
+  vpc_id           = module.vpc.vpc_id
+  sns_topic_arn    = module.observability.sns_topic_arn
+  kms_key_arn      = module.secrets.kms_key_arn
+  rto_minutes      = 30
+  rpo_minutes      = 5
+  chaos_enabled    = false # Set true only when running a scheduled chaos day
 }
