@@ -91,3 +91,28 @@ module "observability" {
   # Alerting — set your email here to receive alarm notifications
   alert_email = var.alert_email
 }
+
+###############################################################################
+# Secrets Module — AWS Secrets Manager + KMS CMK
+###############################################################################
+
+module "secrets" {
+  source = "../../modules/secrets"
+
+  region      = local.region
+  environment = local.environment
+}
+
+###############################################################################
+# Compliance Module — CloudTrail, AWS Config, WORM storage, security alarms
+###############################################################################
+
+module "compliance" {
+  source = "../../modules/compliance"
+
+  region        = local.region
+  environment   = local.environment
+  kms_key_arn   = module.secrets.kms_key_arn
+  sns_topic_arn = module.observability.sns_topic_arn
+  log_group_names = module.ecs_cluster.log_group_names
+}

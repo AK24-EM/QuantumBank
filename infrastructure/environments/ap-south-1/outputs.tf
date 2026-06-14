@@ -34,3 +34,20 @@ output "composite_alarm_name" {
   description = "Platform Degraded composite alarm name"
   value       = module.observability.composite_alarm_name
 }
+
+# ── Security & Compliance outputs ────────────────────────────────────────────
+
+output "kms_key_arn" {
+  description = "KMS CMK ARN for secrets and log encryption"
+  value       = module.secrets.kms_key_arn
+}
+
+output "compliance_reports_bucket" {
+  description = "WORM-locked S3 bucket for regulatory reports"
+  value       = module.compliance.compliance_reports_bucket_name
+}
+
+output "cloudtrail_name" {
+  description = "CloudTrail audit trail name"
+  value       = module.compliance.cloudtrail_name
+}

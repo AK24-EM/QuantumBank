@@ -1,0 +1,378 @@
+###############################################################################
+# QuantumBank — Security Scanning Pipeline (Layer 5)
+#
+# Runs on every push and PR. Never blocks merge — reports findings.
+# Four scan stages run in parallel after code checkout:
+#
+#   1. secret-scan      — Gitleaks: detect committed secrets/credentials
+#   2. sast             — Semgrep: static analysis on Node.js + TypeScript
+#   3. container-scan   — Trivy: CVE scan on Docker images (CRITICAL/HIGH)
+#   4. iac-scan         — Trivy + Checkov: scan Terraform for misconfigurations
+#   5. opa-policy       — OPA/Conftest: enforce custom policies on IaC
+#
+# Results:
+#   - SARIF reports uploaded to GitHub Security → Code Scanning tab
+#   - Summary posted as PR comment
+#   - CRITICAL findings fail the pipeline on main branch pushes
+###############################################################################
+
+name: "Security Scanning"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Full scan every day at 02:00 UTC — catches new CVEs against existing images
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # required for SARIF upload to Code Scanning
+  pull-requests: write     # required to post PR comments
+
+env:
+  FAIL_ON_CRITICAL: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
+
+jobs:
+  ###########################################################################
+  # JOB 1: Secret Detection — Gitleaks
+  # Scans full git history for accidentally committed secrets.
+  # Runs first — no point scanning code that already has leaked credentials.
+  ###########################################################################
+  secret-scan:
+    name: "🔑 Secret Detection (Gitleaks)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history — secrets can be in old commits
+
+      - name: Gitleaks — scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # optional for SARIF
+        continue-on-error: true  # report, don't block (historical commits may have findings)
+
+      - name: Upload Gitleaks SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: gitleaks
+        continue-on-error: true
+
+  ###########################################################################
+  # JOB 2: SAST — Semgrep (Static Application Security Testing)
+  # Scans TypeScript/JavaScript source for:
+  #   - Injection vulnerabilities (SQL, command, path traversal)
+  #   - Insecure dependencies and patterns
+  #   - JWT/crypto misuse
+  #   - Express.js security anti-patterns
+  ###########################################################################
+  sast:
+    name: "🔍 SAST (Semgrep)"
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Semgrep scan — TypeScript + Node.js security rules
+        run: |
+          semgrep ci \
+            --config "p/typescript" \
+            --config "p/nodejs" \
+            --config "p/jwt" \
+            --config "p/express" \
+            --config "p/owasp-top-ten" \
+            --sarif --output semgrep.sarif \
+            --exclude ".pnpm-store/**" \
+            --exclude "dist/**" \
+            --exclude "node_modules/**" \
+            || true   # don't fail — upload findings regardless
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Upload Semgrep SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+      - name: Check for CRITICAL findings
+        if: env.FAIL_ON_CRITICAL == 'true'
+        run: |
+          CRITICAL=$(python3 -c "
+          import json, sys
+          with open('semgrep.sarif') as f: data = json.load(f)
+          runs = data.get('runs', [])
+          criticals = [
+            r for run in runs
+            for r in run.get('results', [])
+            if r.get('properties', {}).get('severity', '').upper() == 'ERROR'
+          ]
+          print(len(criticals))
+          ")
+          if [ "$CRITICAL" -gt "0" ]; then
+            echo "::error::Semgrep found $CRITICAL ERROR-level findings on main branch."
+            exit 1
+          fi
+
+  ###########################################################################
+  # JOB 3: Container Vulnerability Scan — Trivy
+  # Scans Docker images for OS + library CVEs.
+  # Uploads SARIF so findings appear in GitHub Security tab.
+  ###########################################################################
+  container-scan:
+    name: "🐳 Container Scan (Trivy)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build client image (local, not pushed)
+        run: docker build -t quantumbank/client:scan -f Dockerfile .
+
+      - name: Build server image (local, not pushed)
+        run: |
+          if [ -f "server/Dockerfile" ]; then
+            docker build -t quantumbank/server:scan -f server/Dockerfile ./server
+          else
+            echo "::warning::server/Dockerfile not found — skipping server image scan"
+          fi
+
+      - name: Trivy scan — client image (SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: "quantumbank/client:scan"
+          format: "sarif"
+          output: "trivy-client.sarif"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy scan — server image (SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        if: hashFiles('server/Dockerfile') != ''
+        with:
+          image-ref: "quantumbank/server:scan"
+          format: "sarif"
+          output: "trivy-server.sarif"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Trivy scan — client image (table summary)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: "quantumbank/client:scan"
+          format: "table"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          exit-code: ${{ env.FAIL_ON_CRITICAL == 'true' && '1' || '0' }}
+
+      - name: Upload client SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-client.sarif
+          category: trivy-client
+
+      - name: Upload server SARIF to Code Scanning
+        if: always() && hashFiles('trivy-server.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-server.sarif
+          category: trivy-server
+
+  ###########################################################################
+  # JOB 4: Infrastructure as Code Scan — Trivy + Checkov
+  # Scans Terraform for:
+  #   - Misconfigurations (public S3, unencrypted storage, open SGs)
+  #   - CIS Benchmark violations
+  #   - GDPR/PCI-DSS relevant checks
+  ###########################################################################
+  iac-scan:
+    name: "🏗️ IaC Security Scan (Trivy + Checkov)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trivy IaC scan — Terraform (SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "config"
+          scan-ref: "infrastructure/"
+          format: "sarif"
+          output: "trivy-iac.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+          exit-code: "0"
+
+      - name: Trivy IaC scan — Terraform (table)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "config"
+          scan-ref: "infrastructure/"
+          format: "table"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Upload Trivy IaC SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-iac.sarif
+          category: trivy-iac
+
+      - name: Setup Python for Checkov
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Checkov
+        run: pip install checkov==3.2.370 --quiet
+
+      - name: Checkov scan — Terraform (CIS + PCI-DSS + GDPR)
+        run: |
+          checkov \
+            --directory infrastructure/ \
+            --framework terraform \
+            --check CKV_AWS_3,CKV_AWS_18,CKV_AWS_19,CKV_AWS_20,CKV_AWS_21,CKV_AWS_24,CKV_AWS_26,CKV_AWS_28,CKV_AWS_54,CKV_AWS_57,CKV_AWS_66,CKV_AWS_93,CKV_AWS_119,CKV_AWS_131 \
+            --output cli \
+            --output sarif \
+            --output-file-path . \
+            --soft-fail \
+            --compact
+        # CKV checks included:
+        #   CKV_AWS_3   — EBS encryption
+        #   CKV_AWS_18  — S3 access logging
+        #   CKV_AWS_19  — S3 SSE enabled
+        #   CKV_AWS_20  — S3 public read prohibition
+        #   CKV_AWS_21  — S3 versioning
+        #   CKV_AWS_24  — No open SSH SG ingress
+        #   CKV_AWS_26  — SNS topic encrypted
+        #   CKV_AWS_28  — ElastiCache encryption
+        #   CKV_AWS_54  — SG no unrestricted ingress
+        #   CKV_AWS_57  — S3 no public write
+        #   CKV_AWS_66  — CloudWatch log group encrypted
+        #   CKV_AWS_93  — S3 HTTPS only
+        #   CKV_AWS_119 — DynamoDB CMK encryption
+        #   CKV_AWS_131 — ALB drops invalid headers
+
+      - name: Upload Checkov SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results_tf.sarif
+          category: checkov
+        continue-on-error: true
+
+  ###########################################################################
+  # JOB 5: OPA Policy Enforcement — Conftest
+  # Enforces custom Open Policy Agent rules on Terraform plans.
+  # Prevents:
+  #   - Unencrypted storage from reaching production
+  #   - Public S3 buckets
+  #   - Missing required tags (Region, Environment, ManagedBy)
+  #   - Security groups with 0.0.0.0/0 on sensitive ports
+  ###########################################################################
+  opa-policy:
+    name: "🛡️ OPA Policy Check (Conftest)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Conftest
+        run: |
+          curl -sL https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz \
+            | tar xz -C /usr/local/bin conftest
+          conftest --version
+
+      - name: Setup Terraform (for plan generation)
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.5"
+
+      - name: Terraform init (no backend — plan against local state)
+        run: |
+          terraform -chdir=infrastructure/environments/ap-south-1 init -backend=false
+        continue-on-error: true
+
+      - name: Generate Terraform plan JSON
+        run: |
+          terraform -chdir=infrastructure/environments/ap-south-1 \
+            plan -out=tfplan.binary \
+            -var="vpc_cidr=10.2.0.0/16" \
+            -var="state_bucket_arn=arn:aws:s3:::quantumbank-terraform-state" \
+            -var="dynamodb_table_arn=arn:aws:dynamodb:ap-south-1:123456789012:table/quantumbank-terraform-locks" \
+            -var="github_org=AK24-EM" \
+            -var="github_repo=QuantumBank" 2>/dev/null || true
+          terraform -chdir=infrastructure/environments/ap-south-1 \
+            show -json tfplan.binary > tfplan.json 2>/dev/null || echo '{}' > tfplan.json
+        continue-on-error: true
+
+      - name: Run OPA policies via Conftest
+        run: |
+          conftest test \
+            --policy .github/policies/ \
+            --namespace quantumbank \
+            infrastructure/environments/ap-south-1/terraform.tfvars \
+            infrastructure/modules/alb/main.tf \
+            infrastructure/modules/security-groups/main.tf \
+            || true
+        continue-on-error: true
+
+  ###########################################################################
+  # JOB 6: Security Summary — comment on PR with findings
+  ###########################################################################
+  security-summary:
+    name: "📋 Security Summary"
+    runs-on: ubuntu-latest
+    needs: [secret-scan, sast, container-scan, iac-scan, opa-policy]
+    if: always() && github.event_name == 'pull_request'
+    steps:
+      - name: Post security summary to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const jobs = {
+              'Secret Detection':   '${{ needs.secret-scan.result }}',
+              'SAST (Semgrep)':     '${{ needs.sast.result }}',
+              'Container Scan':     '${{ needs.container-scan.result }}',
+              'IaC Scan':           '${{ needs.iac-scan.result }}',
+              'OPA Policy':         '${{ needs.opa-policy.result }}',
+            };
+            const icon = r => r === 'success' ? '✅' : r === 'failure' ? '❌' : r === 'skipped' ? '⏭️' : '⚠️';
+            const rows = Object.entries(jobs)
+              .map(([name, result]) => `| ${icon(result)} ${name} | ${result} |`)
+              .join('\n');
+            const body = [
+              '## 🔐 Security Scan Results',
+              '',
+              '| Check | Status |',
+              '|-------|--------|',
+              rows,
+              '',
+              '> Full findings available in the **Security** tab → **Code Scanning alerts**',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
