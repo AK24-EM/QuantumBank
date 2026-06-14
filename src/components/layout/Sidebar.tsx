@@ -7,6 +7,7 @@ import {
   LogOut,
   Atom,
   Activity,
+  Landmark,
 } from 'lucide-react';
 import type { Page } from '../../types';
 
@@ -19,13 +20,14 @@ interface SidebarProps {
 }
 
 const navItems: { page: Page; label: string; icon: React.ReactNode }[] = [
-  { page: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-  { page: 'accounts', label: 'Accounts', icon: <Wallet className="w-5 h-5" /> },
-  { page: 'transactions', label: 'Transactions', icon: <ArrowLeftRight className="w-5 h-5" /> },
-  { page: 'transfer', label: 'Payments', icon: <ArrowLeftRight className="w-5 h-5" /> },
-  { page: 'cards', label: 'Cards', icon: <CreditCard className="w-5 h-5" /> },
-  { page: 'platform', label: 'Platform Health', icon: <Activity className="w-5 h-5" /> },
-  { page: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
+  { page: 'dashboard',    label: 'Dashboard',     icon: <LayoutDashboard className="w-5 h-5" /> },
+  { page: 'accounts',     label: 'Accounts',      icon: <Wallet className="w-5 h-5" /> },
+  { page: 'transactions', label: 'Transactions',  icon: <ArrowLeftRight className="w-5 h-5" /> },
+  { page: 'transfer',     label: 'Payments',      icon: <ArrowLeftRight className="w-5 h-5" /> },
+  { page: 'cards',        label: 'Cards',         icon: <CreditCard className="w-5 h-5" /> },
+  { page: 'loans',        label: 'Loans & Credit',icon: <Landmark className="w-5 h-5" /> },
+  { page: 'platform',     label: 'Platform Health',icon: <Activity className="w-5 h-5" /> },
+  { page: 'settings',     label: 'Settings',      icon: <Settings className="w-5 h-5" /> },
 ];
 
 export default function Sidebar({ currentPage, onNavigate, onLogout, userName, userRole }: SidebarProps) {

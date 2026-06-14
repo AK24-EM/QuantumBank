@@ -6,6 +6,7 @@ export type Page =
   | 'transactions'
   | 'transfer'
   | 'cards'
+  | 'loans'
   | 'platform'
   | 'settings';
 

@@ -8,6 +8,7 @@ import AccountsPage from './components/accounts/AccountsPage';
 import TransactionsPage from './components/transactions/TransactionsPage';
 import TransferPage from './components/transfer/TransferPage';
 import CardsPage from './components/cards/CardsPage';
+import LoansPage from './components/loans/LoansPage';
 import PlatformPage from './components/platform/PlatformPage';
 import SettingsPage from './components/settings/SettingsPage';
 import type { Page } from './types';
@@ -41,6 +42,8 @@ function App() {
         return <TransferPage />;
       case 'cards':
         return <CardsPage />;
+      case 'loans':
+        return <LoansPage />;
       case 'platform':
         return null;
       case 'settings':

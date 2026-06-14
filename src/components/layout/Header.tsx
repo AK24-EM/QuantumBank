@@ -12,6 +12,7 @@ const pageTitles: Partial<Record<Page, { title: string; subtitle: string }>> = {
   transactions: { title: 'Transactions', subtitle: 'View your recent activity' },
   transfer: { title: 'Funds Transfer & Payments', subtitle: 'Internal & external rails · Beneficiary management · Scheduled payments · Infrastructure resilience' },
   cards: { title: 'Cards', subtitle: 'Manage your debit and credit cards' },
+  loans: { title: 'Loans & Credit', subtitle: 'Loan accounts · Amortization schedule · EMI payments · Prepayment calculator · Closure & NOC' },
   platform: { title: 'DevOps & Platform Health', subtitle: 'Real-time region map · CI/CD traceability · Incident log · Chaos engineering' },
   settings: { title: 'Settings', subtitle: 'Account preferences and security' },
 };
