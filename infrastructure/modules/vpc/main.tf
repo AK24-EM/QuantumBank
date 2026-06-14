@@ -83,6 +83,9 @@ resource "aws_eip" "nat" {
   count  = local.nat_count
   domain = "vpc"
 
+  # Must wait for IGW before allocating — and EIP cannot be released until
+  # the NAT Gateway using it is fully destroyed first (Terraform handles
+  # destroy ordering, but the explicit depends_on ensures create ordering too)
   depends_on = [aws_internet_gateway.main]
 
   tags = {
@@ -100,6 +103,12 @@ resource "aws_nat_gateway" "main" {
   subnet_id     = aws_subnet.public[count.index].id
 
   depends_on = [aws_internet_gateway.main]
+
+  # Ensure new NAT GW is fully provisioned before old ones are torn down
+  # when scaling from multi-AZ to single_nat_gateway (or vice versa)
+  lifecycle {
+    create_before_destroy = true
+  }
 
   tags = {
     Name = "quantumbank-nat-${var.region}-${var.availability_zones[count.index]}"
@@ -144,6 +153,7 @@ resource "aws_route_table" "private" {
 
   tags = {
     Name = "quantumbank-rtb-private-${var.region}-${var.availability_zones[count.index]}"
+    Tier = "private"
   }
 }
 

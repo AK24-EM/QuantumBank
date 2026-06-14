@@ -12,7 +12,8 @@ terraform {
   }
 
   backend "s3" {
-    key     = "global/dns/terraform.tfstate"
+    # Key must match the value in terraform.yml: -backend-config="key=global/terraform.tfstate"
+    key     = "global/terraform.tfstate"
     encrypt = true
   }
 }

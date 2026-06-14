@@ -59,5 +59,10 @@ module "global_dns" {
     }
   }
 
+  # Fail over after 2 consecutive failures (Route 53 checks every 30s → ~60s RTO)
   health_check_failure_threshold = 2
+
+  # HTTP-only until ACM certs are issued — update to 443 / HTTPS when certificate_arn is set
+  health_check_port     = 80
+  health_check_protocol = "HTTP"
 }

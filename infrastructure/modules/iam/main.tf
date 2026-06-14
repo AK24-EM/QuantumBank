@@ -224,6 +224,13 @@ resource "aws_iam_role" "terraform_deploy" {
     }]
   })
 
+  # Prevent the running pipeline from invalidating its own session by modifying
+  # the assume_role_policy mid-apply. Changes to this field take effect on
+  # the next run, not the current one.
+  lifecycle {
+    ignore_changes = [assume_role_policy]
+  }
+
   tags = {
     Name = "quantumbank-terraform-deploy-${var.region}"
     Role = "ci-cd"

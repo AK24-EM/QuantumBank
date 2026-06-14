@@ -181,6 +181,10 @@ resource "aws_lb_listener" "http_forward" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.main.arn
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_lb_listener" "http_redirect" {
@@ -198,6 +202,10 @@ resource "aws_lb_listener" "http_redirect" {
       status_code = "HTTP_301"
     }
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # HTTPS (443) - Forward to target group (requires valid ACM certificate)
@@ -213,6 +221,10 @@ resource "aws_lb_listener" "https" {
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.main.arn
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 

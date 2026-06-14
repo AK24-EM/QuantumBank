@@ -98,6 +98,13 @@ resource "aws_ecr_repository" "services" {
     encryption_type = "AES256"
   }
 
+  # image_tag_mutability cannot be changed on a repo that already has images.
+  # Pre-existing repos imported via imports.tf may have been created as MUTABLE;
+  # ignore drift on this field to prevent a mid-apply failure.
+  lifecycle {
+    ignore_changes = [image_tag_mutability]
+  }
+
   tags = {
     Name    = "quantumbank-ecr-${each.key}"
     Service = each.key
@@ -297,10 +304,16 @@ resource "aws_ecs_service" "alb_services" {
     assign_public_ip = false
   }
 
-  load_balancer {
-    target_group_arn = var.target_group_arn
-    container_name   = each.key
-    container_port   = each.value.port
+  # Only api-gateway is registered with the ALB target group.
+  # Other ALB-attached services communicate internally via Service Connect.
+  # Attach a load_balancer block only for api-gateway.
+  dynamic "load_balancer" {
+    for_each = each.key == "api-gateway" ? [1] : []
+    content {
+      target_group_arn = var.target_group_arn
+      container_name   = each.key
+      container_port   = each.value.port
+    }
   }
 
   service_connect_configuration {

@@ -9,7 +9,7 @@ public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
 private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24", "10.0.12.0/24"]
 
 state_bucket_arn   = "arn:aws:s3:::quantumbank-terraform-state"
-dynamodb_table_arn = "arn:aws:dynamodb:ap-south-1:577137986953:table/quantumbank-terraform-locks"
+dynamodb_table_arn = "arn:aws:dynamodb:us-east-1:577137986953:table/quantumbank-terraform-locks"
 
 certificate_arn = ""
 
@@ -17,3 +17,5 @@ github_org  = "AK24-EM"
 github_repo = "QuantumBank"
 
 sns_alert_arn = ""
+
+single_nat_gateway = true

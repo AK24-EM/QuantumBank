@@ -1,16 +1,19 @@
 ###############################################################################
 # QuantumBank — Terraform CI/CD Pipeline
 #
-# Triggers:
-#   - PR opened/updated → terraform plan (shows what will change, posts comment)
-#   - Push to main      → terraform apply (deploys to AWS automatically)
-#   - Manual dispatch   → choose environment + action
+# Active region: ap-south-1 (Primary / only region currently configured)
 #
-# Prerequisites:
-#   1. Run infrastructure/bootstrap once to create S3 state bucket + DynamoDB lock table
-#   2. Set GitHub Secrets (Settings → Secrets → Actions):
-#        AWS_ACCESS_KEY_ID
-#        AWS_SECRET_ACCESS_KEY
+# Triggers:
+#   - PR opened/updated  → terraform plan  (posts result as PR comment)
+#   - Push to main       → terraform apply (auto-deploys ap-south-1)
+#   - Manual dispatch    → choose action: plan | apply | destroy
+#
+# GitHub Secrets required (Settings → Secrets → Actions):
+#   AWS_ACCESS_KEY_ID
+#   AWS_SECRET_ACCESS_KEY
+#
+# GitHub Environment required (Settings → Environments):
+#   production-ap-south-1
 ###############################################################################
 
 name: "Terraform Infrastructure CI/CD"
@@ -28,16 +31,6 @@ on:
       - "infrastructure/**"
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Target environment"
-        required: true
-        default: "ap-south-1"
-        type: choice
-        options:
-          - ap-south-1
-          - us-east-1
-          - eu-west-1
-          - all
       action:
         description: "Terraform action"
         required: true
@@ -49,13 +42,13 @@ on:
           - destroy
 
 env:
-  TF_VERSION: "1.8.5"
-  AWS_REGION: "ap-south-1"
-  TF_CLI_ARGS: "-no-color"
-  # Remote state bucket (created manually or via bootstrap — must match AWS)
-  TF_STATE_BUCKET: "quantumbank-terraform-state"
-  TF_LOCK_TABLE: "quantumbank-terraform-locks"
-  TF_STATE_REGION: "ap-south-1"
+  TF_VERSION:       "1.8.5"
+  AWS_REGION:       "ap-south-1"
+  TF_CLI_ARGS:      "-no-color"
+  TF_STATE_BUCKET:  "quantumbank-terraform-state"
+  TF_LOCK_TABLE:    "quantumbank-terraform-locks"
+  TF_STATE_REGION:  "ap-south-1"
+  TF_WORKING_DIR:   "infrastructure/environments/ap-south-1"
 
 concurrency:
   group: terraform-${{ github.workflow }}-${{ github.ref }}
@@ -66,7 +59,7 @@ jobs:
   # JOB 1: Validate & Format Check (no AWS credentials required)
   ###########################################################################
   validate:
-    name: "Validate Terraform"
+    name: "✅ Validate Terraform"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -91,27 +84,25 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '⚠️ **Terraform Format Check Failed**\n\nRun `terraform fmt -recursive infrastructure/` locally to fix.'
+              body: '⚠️ **Terraform Format Check Failed**\n\nRun `terraform fmt -recursive infrastructure/` locally to fix formatting before merging.'
             })
 
-      - name: Terraform Init (no backend)
-        run: terraform -chdir=infrastructure/environments/ap-south-1 init -backend=false
+      - name: Terraform Init (validation only — no backend)
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} init -backend=false
 
       - name: Terraform Validate
-        run: terraform -chdir=infrastructure/environments/ap-south-1 validate
+        run: terraform -chdir=${{ env.TF_WORKING_DIR }} validate
 
   ###########################################################################
-  # JOB 2: Plan on Pull Requests (all 3 regions in parallel)
+  # JOB 2: Plan — runs on PRs and manual plan dispatch
   ###########################################################################
   plan:
-    name: "Plan — ${{ matrix.environment }}"
+    name: "🔍 Plan — ap-south-1"
     runs-on: ubuntu-latest
     needs: validate
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
-    strategy:
-      matrix:
-        environment: [ap-south-1, us-east-1, eu-west-1]
-      fail-fast: false
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
 
     steps:
       - name: Checkout code
@@ -127,29 +118,30 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ matrix.environment }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
         run: |
-          terraform -chdir=infrastructure/environments/${{ matrix.environment }} init \
+          terraform -chdir=${{ env.TF_WORKING_DIR }} init \
             -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=environments/ap-south-1/terraform.tfstate" \
             -backend-config="region=${{ env.TF_STATE_REGION }}" \
             -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
 
       - name: Terraform Plan
         id: plan
         run: |
-          terraform -chdir=infrastructure/environments/${{ matrix.environment }} \
-            plan -out=${{ matrix.environment }}.tfplan \
+          terraform -chdir=${{ env.TF_WORKING_DIR }} \
+            plan -out=ap-south-1.tfplan \
             -detailed-exitcode 2>&1 | tee /tmp/plan-output.txt
           echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         continue-on-error: true
 
-      - name: Upload Plan
+      - name: Upload Plan artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan-${{ matrix.environment }}
-          path: infrastructure/environments/${{ matrix.environment }}/${{ matrix.environment }}.tfplan
+          name: tfplan-ap-south-1
+          path: ${{ env.TF_WORKING_DIR }}/ap-south-1.tfplan
           retention-days: 7
 
       - name: Comment Plan on PR
@@ -159,7 +151,9 @@ jobs:
           script: |
             const fs = require('fs');
             const plan = fs.readFileSync('/tmp/plan-output.txt', 'utf8');
-            const truncated = plan.length > 60000 ? plan.slice(0, 60000) + '\n\n...(truncated)' : plan;
+            const truncated = plan.length > 60000
+              ? plan.slice(0, 60000) + '\n\n...(truncated)'
+              : plan;
             const exitCode = '${{ steps.plan.outputs.exitcode }}';
             const status = exitCode === '0' ? '✅ No changes'
                          : exitCode === '2' ? '⚠️ Changes pending'
@@ -168,25 +162,34 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## 🏗️ Terraform Plan — \`${{ matrix.environment }}\`\n**Status:** ${status}\n<details><summary>Full Plan</summary>\n\n\`\`\`hcl\n${truncated}\n\`\`\`\n</details>`
+              body: `## 🏗️ Terraform Plan — \`ap-south-1\`\n**Status:** ${status}\n<details><summary>Full Plan Output</summary>\n\n\`\`\`hcl\n${truncated}\n\`\`\`\n</details>`
             })
 
+      - name: Fail job if plan errored
+        if: steps.plan.outputs.exitcode == '1'
+        run: |
+          echo "Terraform plan returned exit code 1 (error). See plan output above."
+          exit 1
+
   ###########################################################################
-  # JOB 3: Apply primary region (ap-south-1) on push to main
+  # JOB 3: Apply — runs on push to main OR manual apply dispatch
   ###########################################################################
-  apply-ap-south-1:
-    name: "Apply — ap-south-1 (Primary)"
+  apply:
+    name: "🚀 Apply — ap-south-1"
     runs-on: ubuntu-latest
     needs: validate
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' && (github.event.inputs.environment == 'ap-south-1' || github.event.inputs.environment == 'all'))
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
     environment:
       name: production-ap-south-1
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -195,142 +198,74 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Release orphaned Terraform state lock
         continue-on-error: true
         run: |
           LOCK_ID="${{ env.TF_STATE_BUCKET }}/environments/ap-south-1/terraform.tfstate"
-          if aws dynamodb get-item \
+          EXISTING=$(aws dynamodb get-item \
             --table-name "${{ env.TF_LOCK_TABLE }}" \
             --region "${{ env.TF_STATE_REGION }}" \
             --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}" \
-            --query 'Item.LockID.S' --output text 2>/dev/null | grep -q .; then
-            echo "Clearing orphaned lock on ${LOCK_ID}"
+            --query 'Item.LockID.S' --output text 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "None" ]; then
+            echo "Orphaned lock found — clearing: ${LOCK_ID}"
             aws dynamodb delete-item \
               --table-name "${{ env.TF_LOCK_TABLE }}" \
               --region "${{ env.TF_STATE_REGION }}" \
               --key "{\"LockID\":{\"S\":\"${LOCK_ID}\"}}"
+          else
+            echo "No orphaned lock found. Proceeding."
           fi
 
       - name: Terraform Init
         run: |
-          terraform -chdir=infrastructure/environments/ap-south-1 init \
+          terraform -chdir=${{ env.TF_WORKING_DIR }} init \
             -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=environments/ap-south-1/terraform.tfstate" \
             -backend-config="region=${{ env.TF_STATE_REGION }}" \
             -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
 
-      - run: terraform -chdir=infrastructure/environments/ap-south-1 plan -out=ap-south-1.tfplan
-      - run: terraform -chdir=infrastructure/environments/ap-south-1 apply -auto-approve ap-south-1.tfplan
-
-      - name: Output summary
+      - name: Terraform Plan
         run: |
-          echo "## ✅ ap-south-1 Deployed" >> $GITHUB_STEP_SUMMARY
-          terraform -chdir=infrastructure/environments/ap-south-1 output 2>/dev/null >> $GITHUB_STEP_SUMMARY || true
+          terraform -chdir=${{ env.TF_WORKING_DIR }} \
+            plan -out=ap-south-1.tfplan
 
-  ###########################################################################
-  # JOB 4: Apply secondary regions (after primary is healthy)
-  ###########################################################################
-  apply-secondary:
-    name: "Apply — ${{ matrix.environment }}"
-    runs-on: ubuntu-latest
-    needs: apply-ap-south-1
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' && github.event.inputs.environment == 'all')
-    strategy:
-      matrix:
-        include:
-          - environment: us-east-1
-            aws_region: us-east-1
-          - environment: eu-west-1
-            aws_region: eu-west-1
-      fail-fast: false
-    environment:
-      name: production-${{ matrix.environment }}
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ matrix.aws_region }}
-
-      - name: Terraform Init
+      - name: Terraform Apply
         run: |
-          terraform -chdir=infrastructure/environments/${{ matrix.environment }} init \
-            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-            -backend-config="region=${{ env.TF_STATE_REGION }}" \
-            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
+          terraform -chdir=${{ env.TF_WORKING_DIR }} \
+            apply -auto-approve ap-south-1.tfplan
 
-      - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} plan -out=${{ matrix.environment }}.tfplan
-      - run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} apply -auto-approve ${{ matrix.environment }}.tfplan
-
-  ###########################################################################
-  # JOB 5: Apply Global DNS (after all regions deployed)
-  ###########################################################################
-  apply-global-dns:
-    name: "Apply — Global DNS (Route53)"
-    runs-on: ubuntu-latest
-    needs: apply-secondary
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' && github.event.inputs.environment == 'all')
-    environment:
-      name: production-global
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Terraform Init
+      - name: Deployment summary
+        if: always()
         run: |
-          terraform -chdir=infrastructure/global init \
-            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-            -backend-config="region=${{ env.TF_STATE_REGION }}" \
-            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
-
-      - run: terraform -chdir=infrastructure/global plan -out=global.tfplan
-      - run: terraform -chdir=infrastructure/global apply -auto-approve global.tfplan
-
-      - name: Full deployment summary
-        run: |
-          echo "## 🌍 Multi-Region Deployment Complete!" >> $GITHUB_STEP_SUMMARY
-          echo "| Region | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🇮🇳 ap-south-1 (Primary) | ✅ Live |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🇺🇸 us-east-1            | ✅ Live |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🇪🇺 eu-west-1            | ✅ Live |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🌐 Global DNS            | ✅ Configured |" >> $GITHUB_STEP_SUMMARY
+          echo "## 🇮🇳 ap-south-1 Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Terraform Outputs" >> $GITHUB_STEP_SUMMARY
+          terraform -chdir=${{ env.TF_WORKING_DIR }} output 2>/dev/null >> $GITHUB_STEP_SUMMARY || true
 
   ###########################################################################
-  # JOB 6: Destroy — manual only, requires environment approval
+  # JOB 4: Destroy — manual dispatch only, requires environment approval gate
   ###########################################################################
   destroy:
-    name: "Destroy — ${{ github.event.inputs.environment }}"
+    name: "💣 Destroy — ap-south-1"
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
     environment:
-      name: production-destroy
+      name: production-ap-south-1   # reuses same env — approval gate still applies
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -343,9 +278,13 @@ jobs:
 
       - name: Terraform Init
         run: |
-          terraform -chdir=infrastructure/environments/${{ github.event.inputs.environment }} init \
+          terraform -chdir=${{ env.TF_WORKING_DIR }} init \
             -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=environments/ap-south-1/terraform.tfstate" \
             -backend-config="region=${{ env.TF_STATE_REGION }}" \
             -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}"
 
-      - run: terraform -chdir=infrastructure/environments/${{ github.event.inputs.environment }} destroy -auto-approve
+      - name: Terraform Destroy
+        run: |
+          terraform -chdir=${{ env.TF_WORKING_DIR }} \
+            destroy -auto-approve

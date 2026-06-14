@@ -154,15 +154,9 @@ resource "aws_security_group" "db" {
     security_groups = [aws_security_group.ecs.id]
   }
 
-  # No outbound from DB - databases should not initiate connections
-  egress {
-    description = "Deny all outbound from DB tier"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = []
-    self        = false
-  }
+  # No outbound from DB — databases should not initiate external connections.
+  # Omitting egress rules entirely leaves AWS default "deny all" egress in place.
+  # (An explicit rule with empty cidr_blocks is rejected by the AWS API.)
 
   lifecycle {
     create_before_destroy = true
