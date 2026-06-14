@@ -27,6 +27,11 @@ output "target_group_arn" {
   value       = aws_lb_target_group.main.arn
 }
 
+output "target_group_arn_suffix" {
+  description = "ARN suffix of the target group - used in CloudWatch metric dimensions"
+  value       = aws_lb_target_group.main.arn_suffix
+}
+
 output "https_listener_arn" {
   description = "ARN of the HTTPS listener - null when running HTTP-only"
   value       = length(aws_lb_listener.https) > 0 ? aws_lb_listener.https[0].arn : null

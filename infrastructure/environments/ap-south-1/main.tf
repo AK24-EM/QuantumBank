@@ -1,13 +1,15 @@
 ###############################################################################
 # Environment: ap-south-1 - main.tf
 #
-# Tertiary AWS Region deployment root.
+# Primary (active) AWS Region deployment root.
 ###############################################################################
 
 locals {
   region      = "ap-south-1"
   environment = "production"
 }
+
+data "aws_caller_identity" "current" {}
 
 module "vpc" {
   source = "../../modules/vpc"
@@ -64,4 +66,28 @@ module "ecs_cluster" {
   task_execution_role_arn = module.iam.ecs_task_execution_role_arn
   task_role_arn           = module.iam.ecs_task_role_arn
   target_group_arn        = module.alb.target_group_arn
+}
+
+###############################################################################
+# Observability Module — Metrics, Logs, Traces, Alerting
+###############################################################################
+
+module "observability" {
+  source = "../../modules/observability"
+
+  region      = local.region
+  environment = local.environment
+  account_id  = data.aws_caller_identity.current.account_id
+
+  # ECS references
+  ecs_cluster_name = module.ecs_cluster.cluster_name
+  service_names    = module.ecs_cluster.service_names
+  log_group_names  = module.ecs_cluster.log_group_names
+
+  # ALB references
+  alb_arn_suffix          = module.alb.alb_arn_suffix
+  target_group_arn_suffix = module.alb.target_group_arn_suffix
+
+  # Alerting — set your email here to receive alarm notifications
+  alert_email = var.alert_email
 }

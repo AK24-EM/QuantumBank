@@ -16,5 +16,12 @@ certificate_arn = ""
 github_org  = "AK24-EM"
 github_repo = "QuantumBank"
 
-# Optional; leave empty until SNS topic is created
+single_nat_gateway = true
+
+# SNS alert topic is created by the observability module.
+# Leave empty — the module wires it automatically.
 sns_alert_arn = ""
+
+# Set your email to receive CloudWatch alarm notifications.
+# You will receive a confirmation email from AWS SNS after first apply.
+alert_email = ""

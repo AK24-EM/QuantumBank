@@ -59,3 +59,9 @@ variable "single_nat_gateway" {
   type        = bool
   default     = true
 }
+
+variable "alert_email" {
+  description = "Email address to receive CloudWatch alarm notifications via SNS"
+  type        = string
+  default     = ""
+}
