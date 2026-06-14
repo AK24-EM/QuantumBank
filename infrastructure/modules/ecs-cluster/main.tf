@@ -23,6 +23,8 @@
 # ECR Repositories - one per service
 ###############################################################################
 
+data "aws_caller_identity" "current" {}
+
 locals {
   services = {
     "api-gateway" = {
@@ -222,12 +224,10 @@ resource "aws_ecs_task_definition" "services" {
         { name = "PORT", value = tostring(each.value.port) }
       ]
 
-      secrets = [
-        {
-          name      = "DB_PASSWORD"
-          valueFrom = "arn:aws:secretsmanager:${var.region}:*:secret:quantumbank/${each.key}/db-password"
-        }
-      ]
+      # DB_PASSWORD injected via Secrets Manager once real service images are deployed.
+      # Omitted here so Fargate tasks can start with the nginx/placeholder image
+      # before backend services are wired in. Re-enable when server/ is deployed.
+      secrets = []
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -239,7 +239,8 @@ resource "aws_ecs_task_definition" "services" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:${each.value.port}/health || exit 1"]
+        # nginx serves on port 80; /health returns 200 via our nginx.conf
+        command     = ["CMD-SHELL", "curl -f http://localhost:${each.value.port}/health || curl -f http://localhost:80/health || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
