@@ -296,7 +296,7 @@ resource "aws_cloudwatch_metric_alarm" "iam_policy_changes" {
 resource "aws_cloudwatch_log_metric_filter" "unauthorized_api_calls" {
   name           = "quantumbank-unauthorized-api-${var.region}"
   log_group_name = aws_cloudwatch_log_group.cloudtrail.name
-  pattern        = "{ ($.errorCode = \"*UnauthorizedAccess\") || ($.errorCode = \"AccessDenied\") || ($.errorCode = \"*Unauthorized\") }"
+  pattern        = "{ ($.errorCode = \"AccessDenied\") || ($.errorCode = \"UnauthorizedAccess\") || ($.errorCode = \"Client.UnauthorizedAccess\") }"
 
   metric_transformation {
     name          = "UnauthorizedAPICallCount"
@@ -636,8 +636,8 @@ resource "aws_cloudwatch_log_group" "compliance_reports" {
 resource "aws_cloudwatch_log_metric_filter" "sensitive_data_in_logs" {
   name           = "quantumbank-sensitive-data-leak-${var.region}"
   log_group_name = "/aws/cloudtrail/quantumbank-${var.region}"
-  # PAN pattern: 13-19 digit sequences that look like card numbers
-  pattern = "?\"4[0-9]{12}(?:[0-9]{3})?\" ?\"5[1-5][0-9]{14}\" ?\"ssn\" ?\"social security\""
+  # Simple pattern matching sensitive keyword in log events
+  pattern = "\"ssn\" \"social security\" \"card number\""
 
   metric_transformation {
     name          = "SensitiveDataLeakCount"

@@ -73,11 +73,27 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           IMAGE=$REGISTRY/${{ env.ECR_REPO }}
-          docker build \
-            -t $IMAGE:${{ github.sha }} \
-            -f server/Dockerfile \
-            .
-          docker push $IMAGE:${{ github.sha }}
+
+          # Check if this SHA tag already exists (ECR IMMUTABLE — cannot overwrite)
+          EXISTS=$(aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPO }} \
+            --image-ids imageTag=${{ github.sha }} \
+            --region ${{ env.AWS_REGION }} \
+            --query "imageDetails[0].imageTags[0]" \
+            --output text 2>/dev/null || echo "NOT_FOUND")
+
+          if [ "$EXISTS" = "NOT_FOUND" ] || [ "$EXISTS" = "None" ]; then
+            echo "Tag not found — building and pushing..."
+            docker build \
+              -t $IMAGE:${{ github.sha }} \
+              -f server/Dockerfile \
+              .
+            docker push $IMAGE:${{ github.sha }}
+            echo "pushed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Tag ${{ github.sha }} already exists in ECR — skipping push"
+            echo "pushed=false" >> $GITHUB_OUTPUT
+          fi
           echo "image=$IMAGE:${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: Register new task definition
