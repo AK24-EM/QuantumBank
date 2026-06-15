@@ -353,7 +353,7 @@ export async function submitLoanApplication(
 export async function processLoanClosure(
   loan: LoanAccount,
   pin: string,
-  paymentAccountId: string,
+  _paymentAccountId: string,
 ): Promise<LoanClosureResult> {
   await delay(600 + Math.random() * 400);
 
