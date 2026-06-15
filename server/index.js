@@ -35,13 +35,28 @@ async function bootstrap() {
 
   // Initialize Redis connection
   const redisUrl = process.env.REDIS_URL;
-  if (redisUrl && redisUrl !== 'redis://localhost:6379') {
+  if (redisUrl && !redisUrl.includes('localhost') && !redisUrl.includes('127.0.0.1')) {
     try {
       redisClient = createClient({
         url: redisUrl,
-        socket: { connectTimeout: 5000 }
+        socket: {
+          connectTimeout: 5000,
+          reconnectStrategy: (retries) => {
+            if (retries > 3) {
+              console.error('Redis: max reconnect attempts reached, giving up.');
+              return false; // stop retrying
+            }
+            return Math.min(retries * 500, 2000);
+          }
+        }
       });
-      redisClient.on('error', (err) => console.error('Redis client error:', err.message));
+      redisClient.on('error', (err) => {
+        // Log once, don't spam
+        if (!redisClient._errorLogged) {
+          console.error('Redis client error:', err.message);
+          redisClient._errorLogged = true;
+        }
+      });
       await redisClient.connect();
       console.log('Successfully connected to Redis.');
     } catch (err) {
