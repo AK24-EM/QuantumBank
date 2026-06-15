@@ -104,20 +104,6 @@ module "secrets" {
 }
 
 ###############################################################################
-# Compliance Module — CloudTrail, AWS Config, WORM storage, security alarms
-###############################################################################
-
-module "compliance" {
-  source = "../../modules/compliance"
-
-  region          = local.region
-  environment     = local.environment
-  kms_key_arn     = module.secrets.kms_key_arn
-  sns_topic_arn   = module.observability.sns_topic_arn
-  log_group_names = module.ecs_cluster.log_group_names
-}
-
-###############################################################################
 # Disaster Recovery Module — FIS experiments, DR alarms, runbook, EventBridge
 ###############################################################################
 

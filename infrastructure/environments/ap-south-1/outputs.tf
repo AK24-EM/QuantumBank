@@ -42,16 +42,6 @@ output "kms_key_arn" {
   value       = module.secrets.kms_key_arn
 }
 
-output "compliance_reports_bucket" {
-  description = "WORM-locked S3 bucket for regulatory reports"
-  value       = module.compliance.compliance_reports_bucket_name
-}
-
-output "cloudtrail_name" {
-  description = "CloudTrail audit trail name"
-  value       = module.compliance.cloudtrail_name
-}
-
 # ── Disaster Recovery outputs ─────────────────────────────────────────────────
 
 output "dr_runbook_name" {
