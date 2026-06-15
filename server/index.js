@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const { MongoClient } = require('mongodb');
 const { createClient } = require('redis');
 const { loadSecrets } = require('./secrets-loader');
@@ -7,6 +8,11 @@ const app = express();
 const port = process.env.PORT || 8080;
 
 app.use(express.json());
+
+// Serve the React frontend static files from /app/public
+// The CI pipeline copies the built React app here
+const staticPath = path.join(__dirname, 'public');
+app.use(express.static(staticPath));
 
 // Global connection clients
 let mongoClient = null;
@@ -117,6 +123,31 @@ async function bootstrap() {
       message: "Welcome to QuantumBank Core API",
       service: process.env.SERVICE_NAME || 'api-gateway',
       version: 'v1.0.0'
+    });
+  });
+
+  // SPA fallback — serve React index.html for all non-API routes
+  // so React Router handles client-side navigation (/dashboard, /loans, etc.)
+  app.get('*', (req, res) => {
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        // No React build present yet — serve a simple status page
+        res.status(200).send(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>QuantumBank</title>
+          <style>body{font-family:sans-serif;background:#0B1426;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:16px}</style>
+          </head>
+          <body>
+            <h1 style="color:#00D4FF">⚛ QuantumBank</h1>
+            <p>API Gateway is healthy. Frontend deployment in progress...</p>
+            <a href="/health" style="color:#00D4FF">/health</a>
+            <a href="/api" style="color:#00D4FF">/api</a>
+          </body>
+          </html>
+        `);
+      }
     });
   });
 
