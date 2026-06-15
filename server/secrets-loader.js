@@ -48,7 +48,10 @@ async function loadSecrets() {
     }
   } catch (error) {
     console.error("CRITICAL: Failed to load secrets from AWS Secrets Manager:", error.message);
-    process.exit(1); // Stop app if production credentials are unavailable
+    // Do not exit — allow server to start with environment variables already set.
+    // In production, the ECS task execution role provides IAM access to the secret.
+    // If the secret is unavailable, the server runs in degraded mode.
+    console.warn("WARNING: Running without Secrets Manager secrets. Falling back to environment variables.");
   }
 }
 
