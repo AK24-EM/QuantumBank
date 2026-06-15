@@ -75,11 +75,9 @@ jobs:
           IMAGE=$REGISTRY/${{ env.ECR_REPO }}
           docker build \
             -t $IMAGE:${{ github.sha }} \
-            -t $IMAGE:latest \
             -f server/Dockerfile \
             .
           docker push $IMAGE:${{ github.sha }}
-          docker push $IMAGE:latest
           echo "image=$IMAGE:${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: Register new task definition

@@ -173,25 +173,38 @@ resource "aws_cloudtrail" "main" {
   name                          = "quantumbank-trail-${var.region}"
   s3_bucket_name                = aws_s3_bucket.cloudtrail.id
   s3_key_prefix                 = "cloudtrail"
-  include_global_service_events = true  # IAM, STS, Route53
-  is_multi_region_trail         = false # One trail per region (cost optimised)
-  enable_log_file_validation    = true  # SHA-256 digest for tamper detection
+  include_global_service_events = true
+  is_multi_region_trail         = false
+  enable_log_file_validation    = true
   kms_key_id                    = var.kms_key_arn
   cloud_watch_logs_group_arn    = "${aws_cloudwatch_log_group.cloudtrail.arn}:*"
   cloud_watch_logs_role_arn     = aws_iam_role.cloudtrail_cloudwatch.arn
 
-  # Capture S3 data events for compliance bucket reads/writes
-  event_selector {
-    read_write_type           = "All"
-    include_management_events = true
-
-    data_resource {
-      type   = "AWS::S3::Object"
-      values = ["arn:${data.aws_partition.current.partition}:s3:::quantumbank-compliance-reports-${var.region}-${data.aws_caller_identity.current.account_id}/"]
+  # Use advanced_event_selector only (cannot mix with event_selector)
+  advanced_event_selector {
+    name = "ManagementEvents"
+    field_selector {
+      field  = "eventCategory"
+      equals = ["Management"]
     }
   }
 
-  # Capture Secrets Manager data plane events (secret reads = compliance events)
+  advanced_event_selector {
+    name = "S3ComplianceDataEvents"
+    field_selector {
+      field  = "eventCategory"
+      equals = ["Data"]
+    }
+    field_selector {
+      field  = "resources.type"
+      equals = ["AWS::S3::Object"]
+    }
+    field_selector {
+      field        = "resources.ARN"
+      starts_with  = ["arn:${data.aws_partition.current.partition}:s3:::quantumbank-compliance-reports-${var.region}-${data.aws_caller_identity.current.account_id}/"]
+    }
+  }
+
   advanced_event_selector {
     name = "SecretsManagerDataEvents"
     field_selector {
@@ -487,13 +500,6 @@ resource "aws_config_config_rule" "banking_compliance" {
   source {
     owner             = "AWS"
     source_identifier = each.value.source_identifier
-  }
-
-  dynamic "input_parameters" {
-    for_each = length(each.value.params) > 0 ? [each.value.params] : []
-    content {
-      # Encode params as JSON string for the AWS Config rule
-    }
   }
 
   tags = {

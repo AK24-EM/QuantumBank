@@ -161,7 +161,10 @@ resource "aws_fis_experiment_template" "ecs_task_termination" {
   action {
     name      = "stop-payment-tasks"
     action_id = "aws:ecs:stop-task"
-    target    = { tasks = "payment-service-tasks" }
+    target {
+      key   = "Tasks"
+      value = "payment-service-tasks"
+    }
   }
 
   log_configuration {
@@ -232,7 +235,10 @@ resource "aws_fis_experiment_template" "cpu_stress" {
       key   = "duration"
       value = "PT3M"
     }
-    target = { tasks = "api-gateway-tasks" }
+    target {
+      key   = "Tasks"
+      value = "api-gateway-tasks"
+    }
   }
 
   log_configuration {
@@ -309,13 +315,19 @@ resource "aws_fis_experiment_template" "multi_service_stop" {
   action {
     name      = "stop-notification"
     action_id = "aws:ecs:stop-task"
-    target    = { tasks = "notification-tasks" }
+    target {
+      key   = "Tasks"
+      value = "notification-tasks"
+    }
   }
 
   action {
     name      = "stop-analytics"
     action_id = "aws:ecs:stop-task"
-    target    = { tasks = "analytics-tasks" }
+    target {
+      key   = "Tasks"
+      value = "analytics-tasks"
+    }
   }
 
   log_configuration {
@@ -372,7 +384,10 @@ resource "aws_fis_experiment_template" "full_cluster_drain" {
   action {
     name      = "drain-api-gateway"
     action_id = "aws:ecs:stop-task"
-    target    = { tasks = "all-api-gateway-tasks" }
+    target {
+      key   = "Tasks"
+      value = "all-api-gateway-tasks"
+    }
   }
 
   log_configuration {

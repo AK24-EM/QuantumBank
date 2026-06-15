@@ -559,22 +559,25 @@ resource "aws_cloudwatch_dashboard" "main" {
   dashboard_body = jsonencode({
     widgets = [
 
-      #################################################################
       # ROW 0 — Header
-      #################################################################
       {
         type   = "text"
-        x      = 0; y = 0; width = 24; height = 2
+        x      = 0
+        y      = 0
+        width  = 24
+        height = 2
         properties = {
           markdown = "# 🏦 QuantumBank — ${upper(var.region)} Observability Dashboard\n**Environment:** ${var.environment} | **Region:** ${var.region} | Metrics refresh every 60s"
         }
       },
 
-      #################################################################
-      # ROW 1 — Platform Health (ALB)
-      #################################################################
+      # ROW 1 — ALB 5xx
       {
-        type   = "metric"; x = 0; y = 2; width = 8; height = 6
+        type   = "metric"
+        x      = 0
+        y      = 2
+        width  = 8
+        height = 6
         properties = {
           title  = "ALB — 5XX Error Count"
           region = var.region
@@ -583,17 +586,23 @@ resource "aws_cloudwatch_dashboard" "main" {
             "LoadBalancer", var.alb_arn_suffix,
             { stat = "Sum", period = 60, color = "#d62728" }
           ]]
-          view    = "timeSeries"
-          yAxis   = { left = { min = 0 } }
+          view  = "timeSeries"
+          yAxis = { left = { min = 0 } }
           annotations = {
             horizontal = [{ value = var.alb_5xx_threshold, label = "Alarm threshold", color = "#ff7f0e" }]
           }
         }
       },
+
+      # ROW 1 — ALB Latency
       {
-        type   = "metric"; x = 8; y = 2; width = 8; height = 6
+        type   = "metric"
+        x      = 8
+        y      = 2
+        width  = 8
+        height = 6
         properties = {
-          title  = "ALB — P50 / P95 / P99 Latency (ms)"
+          title  = "ALB — P50 / P95 / P99 Latency"
           region = var.region
           metrics = [
             ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", var.alb_arn_suffix, { stat = "p50", period = 60, label = "p50", color = "#2ca02c" }],
@@ -607,13 +616,19 @@ resource "aws_cloudwatch_dashboard" "main" {
           }
         }
       },
+
+      # ROW 1 — ALB Host Health
       {
-        type   = "metric"; x = 16; y = 2; width = 8; height = 6
+        type   = "metric"
+        x      = 16
+        y      = 2
+        width  = 8
+        height = 6
         properties = {
-          title  = "ALB — Healthy vs Unhealthy Host Count"
+          title  = "ALB — Healthy vs Unhealthy Hosts"
           region = var.region
           metrics = [
-            ["AWS/ApplicationELB", "HealthyHostCount",   "LoadBalancer", var.alb_arn_suffix, "TargetGroup", var.target_group_arn_suffix, { stat = "Average", period = 60, label = "Healthy",   color = "#2ca02c" }],
+            ["AWS/ApplicationELB", "HealthyHostCount", "LoadBalancer", var.alb_arn_suffix, "TargetGroup", var.target_group_arn_suffix, { stat = "Average", period = 60, label = "Healthy", color = "#2ca02c" }],
             ["AWS/ApplicationELB", "UnHealthyHostCount", "LoadBalancer", var.alb_arn_suffix, "TargetGroup", var.target_group_arn_suffix, { stat = "Maximum", period = 60, label = "Unhealthy", color = "#d62728" }]
           ]
           view  = "timeSeries"
@@ -621,15 +636,23 @@ resource "aws_cloudwatch_dashboard" "main" {
         }
       },
 
-      #################################################################
-      # ROW 2 — ECS CPU per service
-      #################################################################
+      # ROW 2 — ECS Header
       {
-        type   = "text"; x = 0; y = 8; width = 24; height = 1
+        type   = "text"
+        x      = 0
+        y      = 8
+        width  = 24
+        height = 1
         properties = { markdown = "## ECS Service Health" }
       },
+
+      # ROW 2 — ECS CPU
       {
-        type   = "metric"; x = 0; y = 9; width = 12; height = 6
+        type   = "metric"
+        x      = 0
+        y      = 9
+        width  = 12
+        height = 6
         properties = {
           title  = "ECS — CPU Utilisation by Service (%)"
           region = var.region
@@ -646,8 +669,14 @@ resource "aws_cloudwatch_dashboard" "main" {
           }
         }
       },
+
+      # ROW 2 — ECS Memory
       {
-        type   = "metric"; x = 12; y = 9; width = 12; height = 6
+        type   = "metric"
+        x      = 12
+        y      = 9
+        width  = 12
+        height = 6
         properties = {
           title  = "ECS — Memory Utilisation by Service (%)"
           region = var.region
@@ -665,11 +694,13 @@ resource "aws_cloudwatch_dashboard" "main" {
         }
       },
 
-      #################################################################
-      # ROW 3 — Running task count
-      #################################################################
+      # ROW 3 — Running Task Count
       {
-        type   = "metric"; x = 0; y = 15; width = 24; height = 6
+        type   = "metric"
+        x      = 0
+        y      = 15
+        width  = 24
+        height = 6
         properties = {
           title  = "ECS — Running Task Count by Service"
           region = var.region
@@ -684,17 +715,25 @@ resource "aws_cloudwatch_dashboard" "main" {
         }
       },
 
-      #################################################################
-      # ROW 4 — Payment Domain
-      #################################################################
+      # ROW 4 — Payment Domain Header
       {
-        type   = "text"; x = 0; y = 21; width = 24; height = 1
+        type   = "text"
+        x      = 0
+        y      = 21
+        width  = 24
+        height = 1
         properties = { markdown = "## Payment Domain" }
       },
+
+      # ROW 4 — Payment Failures
       {
-        type   = "metric"; x = 0; y = 22; width = 8; height = 6
+        type   = "metric"
+        x      = 0
+        y      = 22
+        width  = 8
+        height = 6
         properties = {
-          title  = "Payment Failures (TRANSFER_FAILED) per 5 min"
+          title  = "Payment Failures per 5 min"
           region = var.region
           metrics = [[
             "QuantumBank/${var.region}/payment-service", "PaymentFailureCount",
@@ -707,10 +746,16 @@ resource "aws_cloudwatch_dashboard" "main" {
           }
         }
       },
+
+      # ROW 4 — Cooling Period Blocks
       {
-        type   = "metric"; x = 8; y = 22; width = 8; height = 6
+        type   = "metric"
+        x      = 8
+        y      = 22
+        width  = 8
+        height = 6
         properties = {
-          title  = "Cooling Period Blocks (Fraud Prevention) per 5 min"
+          title  = "Cooling Period Blocks per 5 min"
           region = var.region
           metrics = [[
             "QuantumBank/${var.region}/payment-service", "CoolingPeriodBlockCount",
@@ -720,8 +765,14 @@ resource "aws_cloudwatch_dashboard" "main" {
           yAxis = { left = { min = 0 } }
         }
       },
+
+      # ROW 4 — Error Rates
       {
-        type   = "metric"; x = 16; y = 22; width = 8; height = 6
+        type   = "metric"
+        x      = 16
+        y      = 22
+        width  = 8
+        height = 6
         properties = {
           title  = "Error Rates by Service per 5 min"
           region = var.region
@@ -737,15 +788,23 @@ resource "aws_cloudwatch_dashboard" "main" {
         }
       },
 
-      #################################################################
-      # ROW 5 — Alarm State Overview
-      #################################################################
+      # ROW 5 — Alarms Header
       {
-        type   = "text"; x = 0; y = 28; width = 24; height = 1
+        type   = "text"
+        x      = 0
+        y      = 28
+        width  = 24
+        height = 1
         properties = { markdown = "## Active Alarms" }
       },
+
+      # ROW 5 — Alarm Board
       {
-        type   = "alarm"; x = 0; y = 29; width = 24; height = 6
+        type   = "alarm"
+        x      = 0
+        y      = 29
+        width  = 24
+        height = 6
         properties = {
           title = "Alarm Status Board — ${var.region}"
           alarms = [
