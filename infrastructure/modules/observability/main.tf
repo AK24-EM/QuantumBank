@@ -657,12 +657,14 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "ECS — CPU Utilisation by Service (%)"
           region = var.region
-          metrics = [for svc in local.all_services : [
-            "AWS/ECS", "CPUUtilization",
-            "ClusterName", var.ecs_cluster_name,
-            "ServiceName", lookup(var.service_names, svc, svc),
-            { stat = "Average", period = 60, label = svc }
-          ]]
+          metrics = [
+            ["AWS/ECS", "CPUUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "api-gateway", "quantumbank-api-gateway-${var.region}"), { stat = "Average", period = 60, label = "api-gateway" }],
+            ["AWS/ECS", "CPUUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "payment-service", "quantumbank-payment-service-${var.region}"), { stat = "Average", period = 60, label = "payment-service" }],
+            ["AWS/ECS", "CPUUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "auth-service", "quantumbank-auth-service-${var.region}"), { stat = "Average", period = 60, label = "auth-service" }],
+            ["AWS/ECS", "CPUUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "notification-service", "quantumbank-notification-service-${var.region}"), { stat = "Average", period = 60, label = "notification-service" }],
+            ["AWS/ECS", "CPUUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "analytics-worker", "quantumbank-analytics-worker-${var.region}"), { stat = "Average", period = 60, label = "analytics-worker" }],
+            ["AWS/ECS", "CPUUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "statement-generator", "quantumbank-statement-generator-${var.region}"), { stat = "Average", period = 60, label = "statement-generator" }]
+          ]
           view  = "timeSeries"
           yAxis = { left = { min = 0, max = 100 } }
           annotations = {
@@ -681,12 +683,14 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "ECS — Memory Utilisation by Service (%)"
           region = var.region
-          metrics = [for svc in local.all_services : [
-            "AWS/ECS", "MemoryUtilization",
-            "ClusterName", var.ecs_cluster_name,
-            "ServiceName", lookup(var.service_names, svc, svc),
-            { stat = "Average", period = 60, label = svc }
-          ]]
+          metrics = [
+            ["AWS/ECS", "MemoryUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "api-gateway", "quantumbank-api-gateway-${var.region}"), { stat = "Average", period = 60, label = "api-gateway" }],
+            ["AWS/ECS", "MemoryUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "payment-service", "quantumbank-payment-service-${var.region}"), { stat = "Average", period = 60, label = "payment-service" }],
+            ["AWS/ECS", "MemoryUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "auth-service", "quantumbank-auth-service-${var.region}"), { stat = "Average", period = 60, label = "auth-service" }],
+            ["AWS/ECS", "MemoryUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "notification-service", "quantumbank-notification-service-${var.region}"), { stat = "Average", period = 60, label = "notification-service" }],
+            ["AWS/ECS", "MemoryUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "analytics-worker", "quantumbank-analytics-worker-${var.region}"), { stat = "Average", period = 60, label = "analytics-worker" }],
+            ["AWS/ECS", "MemoryUtilization", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "statement-generator", "quantumbank-statement-generator-${var.region}"), { stat = "Average", period = 60, label = "statement-generator" }]
+          ]
           view  = "timeSeries"
           yAxis = { left = { min = 0, max = 100 } }
           annotations = {
@@ -705,12 +709,14 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "ECS — Running Task Count by Service"
           region = var.region
-          metrics = [for svc in local.all_services : [
-            "ECS/ContainerInsights", "RunningTaskCount",
-            "ClusterName", var.ecs_cluster_name,
-            "ServiceName", lookup(var.service_names, svc, svc),
-            { stat = "Average", period = 60, label = svc }
-          ]]
+          metrics = [
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "api-gateway", "quantumbank-api-gateway-${var.region}"), { stat = "Average", period = 60, label = "api-gateway" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "payment-service", "quantumbank-payment-service-${var.region}"), { stat = "Average", period = 60, label = "payment-service" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "auth-service", "quantumbank-auth-service-${var.region}"), { stat = "Average", period = 60, label = "auth-service" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "notification-service", "quantumbank-notification-service-${var.region}"), { stat = "Average", period = 60, label = "notification-service" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "analytics-worker", "quantumbank-analytics-worker-${var.region}"), { stat = "Average", period = 60, label = "analytics-worker" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "statement-generator", "quantumbank-statement-generator-${var.region}"), { stat = "Average", period = 60, label = "statement-generator" }]
+          ]
           view  = "timeSeries"
           yAxis = { left = { min = 0 } }
         }
@@ -777,10 +783,14 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "Error Rates by Service per 5 min"
           region = var.region
-          metrics = [for svc in local.all_services : [
-            "QuantumBank/${var.region}/${svc}", "ErrorCount",
-            { stat = "Sum", period = 300, label = svc }
-          ]]
+          metrics = [
+            ["QuantumBank/${var.region}/api-gateway", "ErrorCount", { stat = "Sum", period = 300, label = "api-gateway" }],
+            ["QuantumBank/${var.region}/payment-service", "ErrorCount", { stat = "Sum", period = 300, label = "payment-service" }],
+            ["QuantumBank/${var.region}/auth-service", "ErrorCount", { stat = "Sum", period = 300, label = "auth-service" }],
+            ["QuantumBank/${var.region}/notification-service", "ErrorCount", { stat = "Sum", period = 300, label = "notification-service" }],
+            ["QuantumBank/${var.region}/analytics-worker", "ErrorCount", { stat = "Sum", period = 300, label = "analytics-worker" }],
+            ["QuantumBank/${var.region}/statement-generator", "ErrorCount", { stat = "Sum", period = 300, label = "statement-generator" }]
+          ]
           view  = "timeSeries"
           yAxis = { left = { min = 0 } }
           annotations = {
@@ -799,7 +809,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = { markdown = "## Active Alarms" }
       },
 
-      # ROW 5 — Composite alarm status as single value
+      # ROW 5 — Platform Health running tasks
       {
         type   = "metric"
         x      = 0
@@ -809,12 +819,14 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "Platform Health — Running Tasks (all services)"
           region = var.region
-          metrics = [for svc in local.all_services : [
-            "ECS/ContainerInsights", "RunningTaskCount",
-            "ClusterName", var.ecs_cluster_name,
-            "ServiceName", lookup(var.service_names, svc, svc),
-            { stat = "Average", period = 60, label = svc }
-          ]]
+          metrics = [
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "api-gateway", "quantumbank-api-gateway-${var.region}"), { stat = "Average", period = 60, label = "api-gateway" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "payment-service", "quantumbank-payment-service-${var.region}"), { stat = "Average", period = 60, label = "payment-service" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "auth-service", "quantumbank-auth-service-${var.region}"), { stat = "Average", period = 60, label = "auth-service" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "notification-service", "quantumbank-notification-service-${var.region}"), { stat = "Average", period = 60, label = "notification-service" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "analytics-worker", "quantumbank-analytics-worker-${var.region}"), { stat = "Average", period = 60, label = "analytics-worker" }],
+            ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", lookup(var.service_names, "statement-generator", "quantumbank-statement-generator-${var.region}"), { stat = "Average", period = 60, label = "statement-generator" }]
+          ]
           view  = "timeSeries"
           yAxis = { left = { min = 0 } }
         }

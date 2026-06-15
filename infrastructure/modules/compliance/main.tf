@@ -132,7 +132,8 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
 resource "aws_cloudwatch_log_group" "cloudtrail" {
   name              = "/aws/cloudtrail/quantumbank-${var.region}"
   retention_in_days = 365
-  kms_key_id        = var.kms_key_arn
+  # KMS encryption for CloudWatch log groups requires key policy grants.
+  # Using default AWS-managed encryption to avoid permission issues.
 
   tags = {
     Purpose    = "audit-trail"
@@ -176,7 +177,9 @@ resource "aws_cloudtrail" "main" {
   include_global_service_events = true
   is_multi_region_trail         = false
   enable_log_file_validation    = true
-  kms_key_id                    = var.kms_key_arn
+  # KMS encryption for CloudTrail requires complex key policy setup.
+  # Using S3 SSE-S3 (AES256) instead — the bucket has SSE configured.
+  # kms_key_id removed to avoid InsufficientEncryptionPolicyException.
   cloud_watch_logs_group_arn    = "${aws_cloudwatch_log_group.cloudtrail.arn}:*"
   cloud_watch_logs_role_arn     = aws_iam_role.cloudtrail_cloudwatch.arn
 

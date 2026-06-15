@@ -9,12 +9,12 @@ output "fis_role_arn" {
 
 output "experiment_ids" {
   description = "Map of experiment name to FIS experiment template ID"
-  value = {
-    ecs_task_termination = aws_fis_experiment_template.ecs_task_termination.id
-    cpu_stress           = aws_fis_experiment_template.cpu_stress.id
-    multi_service_stop   = aws_fis_experiment_template.multi_service_stop.id
-    full_cluster_drain   = aws_fis_experiment_template.full_cluster_drain.id
-  }
+  value = var.chaos_enabled ? {
+    ecs_task_termination = aws_fis_experiment_template.ecs_task_termination[0].id
+    cpu_stress           = aws_fis_experiment_template.cpu_stress[0].id
+    multi_service_stop   = aws_fis_experiment_template.multi_service_stop[0].id
+    full_cluster_drain   = aws_fis_experiment_template.full_cluster_drain[0].id
+  } : {}
 }
 
 output "dr_runbook_name" {

@@ -131,6 +131,7 @@ resource "aws_cloudwatch_log_group" "fis" {
 ###############################################################################
 
 resource "aws_fis_experiment_template" "ecs_task_termination" {
+  count       = var.chaos_enabled ? 1 : 0
   description = "EXP-1: Stop 30% of payment-service tasks to validate ECS auto-recovery (RTO < 2 min)"
   role_arn    = aws_iam_role.fis.arn
 
@@ -194,6 +195,7 @@ resource "aws_fis_experiment_template" "ecs_task_termination" {
 ###############################################################################
 
 resource "aws_fis_experiment_template" "cpu_stress" {
+  count       = var.chaos_enabled ? 1 : 0
   description = "EXP-2: Inject CPU stress on api-gateway to validate auto-scaling response (scale-out < 3 min)"
   role_arn    = aws_iam_role.fis.arn
 
@@ -268,6 +270,7 @@ resource "aws_fis_experiment_template" "cpu_stress" {
 ###############################################################################
 
 resource "aws_fis_experiment_template" "multi_service_stop" {
+  count       = var.chaos_enabled ? 1 : 0
   description = "EXP-3: Stop non-critical services to validate graceful degradation (payments unaffected)"
   role_arn    = aws_iam_role.fis.arn
 
@@ -354,6 +357,7 @@ resource "aws_fis_experiment_template" "multi_service_stop" {
 ###############################################################################
 
 resource "aws_fis_experiment_template" "full_cluster_drain" {
+  count       = var.chaos_enabled ? 1 : 0
   description = "EXP-4: Drain all tasks — validates Route53 DNS failover RTO < 60s (run only with multi-region active)"
   role_arn    = aws_iam_role.fis.arn
 
