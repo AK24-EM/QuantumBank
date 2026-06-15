@@ -799,26 +799,24 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = { markdown = "## Active Alarms" }
       },
 
-      # ROW 5 — Alarm Board
+      # ROW 5 — Composite alarm status as single value
       {
-        type   = "alarm"
+        type   = "metric"
         x      = 0
         y      = 29
         width  = 24
         height = 6
         properties = {
-          title = "Alarm Status Board — ${var.region}"
-          alarms = [
-            aws_cloudwatch_composite_alarm.platform_degraded.alarm_name,
-            aws_cloudwatch_metric_alarm.alb_5xx.alarm_name,
-            aws_cloudwatch_metric_alarm.alb_p99_latency.alarm_name,
-            aws_cloudwatch_metric_alarm.alb_unhealthy_hosts.alarm_name,
-            aws_cloudwatch_metric_alarm.ecs_running_tasks["api-gateway"].alarm_name,
-            aws_cloudwatch_metric_alarm.ecs_running_tasks["payment-service"].alarm_name,
-            aws_cloudwatch_metric_alarm.payment_failure_rate.alarm_name,
-            aws_cloudwatch_metric_alarm.ecs_cpu["payment-service"].alarm_name,
-            aws_cloudwatch_metric_alarm.ecs_memory["payment-service"].alarm_name,
-          ]
+          title  = "Platform Health — Running Tasks (all services)"
+          region = var.region
+          metrics = [for svc in local.all_services : [
+            "ECS/ContainerInsights", "RunningTaskCount",
+            "ClusterName", var.ecs_cluster_name,
+            "ServiceName", lookup(var.service_names, svc, svc),
+            { stat = "Average", period = 60, label = svc }
+          ]]
+          view  = "timeSeries"
+          yAxis = { left = { min = 0 } }
         }
       }
     ]
