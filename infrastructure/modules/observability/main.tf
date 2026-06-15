@@ -307,7 +307,7 @@ resource "aws_cloudwatch_log_metric_filter" "error_count" {
   log_group_name = each.value
 
   # Matches both JSON structured logs {"level":"error"} and plain ERROR strings
-  pattern = "?\"level\":\"error\" ?ERROR ?\"status\":5"
+  pattern = "ERROR"
 
   metric_transformation {
     name          = "ErrorCount"
@@ -350,7 +350,7 @@ resource "aws_cloudwatch_log_metric_filter" "payment_failures" {
   name           = "quantumbank-payment-failures-${var.region}"
   log_group_name = var.log_group_names["payment-service"]
 
-  pattern = "?TRANSFER_FAILED ?PAYMENT_FAILED ?\"status\":\"failed\""
+  pattern = "TRANSFER_FAILED PAYMENT_FAILED"
 
   metric_transformation {
     name          = "PaymentFailureCount"

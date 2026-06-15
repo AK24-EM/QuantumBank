@@ -106,17 +106,22 @@ jobs:
           aws ecs describe-task-definition \
             --task-definition ${{ env.TASK_FAMILY }} \
             --query "taskDefinition" \
-            --output json | python3 -c "
-          import json, sys, os
-          td = json.load(sys.stdin)
+            --output json > /tmp/current-td.json
+
+          python3 - "$NEW_IMAGE" << 'PYEOF'
+          import json, sys
+          new_image = sys.argv[1]
+          with open('/tmp/current-td.json') as f:
+              td = json.load(f)
           for c in td['containerDefinitions']:
               if c['name'] == 'api-gateway':
-                  c['image'] = os.environ['NEW_IMAGE']
+                  c['image'] = new_image
           for k in ['taskDefinitionArn','revision','status','requiresAttributes',
                     'compatibilities','registeredAt','registeredBy']:
               td.pop(k, None)
-          print(json.dumps(td))
-          " > /tmp/new-td.json
+          with open('/tmp/new-td.json', 'w') as f:
+              json.dump(td, f)
+          PYEOF
 
           NEW_ARN=$(aws ecs register-task-definition \
             --cli-input-json file:///tmp/new-td.json \
