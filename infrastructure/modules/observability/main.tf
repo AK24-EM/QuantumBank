@@ -494,7 +494,8 @@ resource "aws_cloudwatch_query_definition" "xray_slow_traces" {
 resource "aws_xray_sampling_rule" "services" {
   for_each = local.xray_sampling_overrides
 
-  rule_name      = "quantumbank-${each.key}-${var.region}"
+  # rule_name max 32 chars — use short service abbreviation + region suffix
+  rule_name      = "qb-${substr(replace(each.key, "-service", ""), 0, 18)}-${var.region}"
   priority       = 100 + index(local.all_services, each.key)
   version        = 1
   reservoir_size = each.value.reservoir_size
@@ -518,9 +519,9 @@ resource "aws_xray_sampling_rule" "services" {
   }
 }
 
-# Default fallback rule — catches any service not matched above
+# Default fallback rule
 resource "aws_xray_sampling_rule" "default_fallback" {
-  rule_name      = "quantumbank-default-${var.region}"
+  rule_name      = "qb-default-${var.region}"
   priority       = 200
   version        = 1
   reservoir_size = 5
