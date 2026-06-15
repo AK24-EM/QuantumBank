@@ -177,46 +177,20 @@ resource "aws_cloudtrail" "main" {
   include_global_service_events = true
   is_multi_region_trail         = false
   enable_log_file_validation    = true
-  # KMS encryption for CloudTrail requires complex key policy setup.
-  # Using S3 SSE-S3 (AES256) instead — the bucket has SSE configured.
-  # kms_key_id removed to avoid InsufficientEncryptionPolicyException.
   cloud_watch_logs_group_arn    = "${aws_cloudwatch_log_group.cloudtrail.arn}:*"
   cloud_watch_logs_role_arn     = aws_iam_role.cloudtrail_cloudwatch.arn
 
-  # Use advanced_event_selector only (cannot mix with event_selector)
+  # Management events only — default CloudTrail behavior.
+  # advanced_event_selector with eventCategory=Management captures all
+  # API calls (read + write) across all AWS services.
+  # Data events (S3 object, Secrets Manager) omitted — they require
+  # the trail to be created first and add significant cost at scale.
   advanced_event_selector {
-    name = "ManagementEvents"
+    name = "CaptureAllManagementEvents"
+
     field_selector {
       field  = "eventCategory"
       equals = ["Management"]
-    }
-  }
-
-  advanced_event_selector {
-    name = "S3ComplianceDataEvents"
-    field_selector {
-      field  = "eventCategory"
-      equals = ["Data"]
-    }
-    field_selector {
-      field  = "resources.type"
-      equals = ["AWS::S3::Object"]
-    }
-    field_selector {
-      field        = "resources.ARN"
-      starts_with  = ["arn:${data.aws_partition.current.partition}:s3:::quantumbank-compliance-reports-${var.region}-${data.aws_caller_identity.current.account_id}/"]
-    }
-  }
-
-  advanced_event_selector {
-    name = "SecretsManagerDataEvents"
-    field_selector {
-      field  = "eventCategory"
-      equals = ["Data"]
-    }
-    field_selector {
-      field  = "resources.type"
-      equals = ["AWS::SecretsManager::Secret"]
     }
   }
 
