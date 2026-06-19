@@ -76,9 +76,10 @@ jobs:
       - name: Verify production confirmation
         if: github.event_name == 'workflow_dispatch'
         run: |
-          if [ "${{ github.event.inputs.confirm_production }}" != "CONFIRM" ]; then
-            echo "::error::Production chaos requires typing CONFIRM in the confirm_production input."
-            echo "::error::This protects against accidental runs. Re-trigger with confirm_production=CONFIRM."
+          # Case-insensitive check — accepts CONFIRM, confirm, Confirm
+          INPUT=$(echo "${{ github.event.inputs.confirm_production }}" | tr '[:lower:]' '[:upper:]')
+          if [ "$INPUT" != "CONFIRM" ]; then
+            echo "::error::Type CONFIRM (or confirm) in the confirm_production field to run chaos experiments."
             exit 1
           fi
           echo "✅ Production confirmation accepted."
