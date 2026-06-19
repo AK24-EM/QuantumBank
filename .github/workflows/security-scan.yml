@@ -140,22 +140,20 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build client image (local, not pushed)
-        run: docker build -t quantumbank/client:scan -f Dockerfile .
-
-      - name: Build server image (local, not pushed)
+      - name: Build unified app image (React + Node.js — same as production)
         run: |
-          if [ -f "server/Dockerfile" ]; then
-            # Build context is repo root so server/Dockerfile COPY server/ . works correctly
-            docker build -t quantumbank/server:scan -f server/Dockerfile .
-          else
-            echo "::warning::server/Dockerfile not found — skipping server image scan"
-          fi
+          # server/Dockerfile is the production image: React frontend + Node.js API
+          # Build context must be repo root — stage 1 needs src/ and package.json,
+          # stage 2 needs server/ directory. Both exist only at repo root.
+          docker build \
+            -t quantumbank/app:scan \
+            -f server/Dockerfile \
+            .
 
-      - name: Trivy scan — client image (SARIF)
+      - name: Trivy scan — app image (SARIF)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: "quantumbank/client:scan"
+          image-ref: "quantumbank/app:scan"
           format: "sarif"
           output: "trivy-client.sarif"
           ignore-unfixed: true
@@ -163,41 +161,23 @@ jobs:
           severity: "CRITICAL,HIGH"
           exit-code: "0"
 
-      - name: Trivy scan — server image (SARIF)
-        uses: aquasecurity/trivy-action@master
-        if: hashFiles('server/Dockerfile') != ''
-        with:
-          image-ref: "quantumbank/server:scan"
-          format: "sarif"
-          output: "trivy-server.sarif"
-          ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
-          exit-code: "0"
-
-      - name: Trivy scan — client image (table summary)
+      - name: Trivy scan — app image (table summary)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: "quantumbank/client:scan"
+          image-ref: "quantumbank/app:scan"
           format: "table"
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
           exit-code: ${{ env.FAIL_ON_CRITICAL == 'true' && '1' || '0' }}
 
-      - name: Upload client SARIF to Code Scanning
+      - name: Upload app SARIF to Code Scanning
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-client.sarif
-          category: trivy-client
-
-      - name: Upload server SARIF to Code Scanning
-        if: always() && hashFiles('trivy-server.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-server.sarif
-          category: trivy-server
+          category: trivy-app
+        continue-on-error: true
 
   ###########################################################################
   # JOB 4: Infrastructure as Code Scan — Trivy + Checkov
