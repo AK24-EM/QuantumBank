@@ -146,7 +146,8 @@ jobs:
       - name: Build server image (local, not pushed)
         run: |
           if [ -f "server/Dockerfile" ]; then
-            docker build -t quantumbank/server:scan -f server/Dockerfile ./server
+            # Build context is repo root so server/Dockerfile COPY server/ . works correctly
+            docker build -t quantumbank/server:scan -f server/Dockerfile .
           else
             echo "::warning::server/Dockerfile not found — skipping server image scan"
           fi
